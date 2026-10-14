@@ -1,0 +1,14 @@
+id: zkteco_csv
+name: ZKTeco attendance log export (CSV)
+file_type: csv
+delimiter: ","
+columns:
+  employee_id: "AC-No."
+  timestamp: "Time"
+  direction: "State"
+datetime_formats: ["%d/%m/%Y %H:%M:%S", "%d/%m/%Y %H:%M", "%Y-%m-%d %H:%M:%S"]
+direction_map:
+  "C/In": in
+  "C/Out": out
+  "OverTime In": in
+  "OverTime Out": out

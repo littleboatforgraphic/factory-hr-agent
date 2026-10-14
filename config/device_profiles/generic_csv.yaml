@@ -1,0 +1,9 @@
+id: generic_csv
+name: Generic CSV (employee_id, date, time)
+file_type: csv
+columns:
+  employee_id: employee_id
+  date: date
+  time: time
+date_formats: ["%Y-%m-%d", "%d/%m/%Y"]
+time_formats: ["%H:%M:%S", "%H:%M"]

@@ -1,0 +1,59 @@
+# Demo factory configuration. Copy this file per factory; nothing here is hard-coded in the engine.
+id: demo-pahang
+name: Demo Factory (Pahang)
+employer:
+  legal_name: Demo Manufacturing Sdn. Bhd.
+  registration_no: "202601000001 (1234567-A)"
+  address: "Lot 1, Kawasan Perindustrian Semambu, 25350 Kuantan, Pahang"
+  epf_no: "E0000000"
+  socso_no: "A0000000000"
+  tax_no: "E 0000000000"
+country: MY
+state: PHG
+holidays_file: config/holidays/MY-PHG-2026.yaml
+storage:
+  backend: excel          # excel (V1) | sqlite | postgres (placeholders)
+  path: data/demo-pahang
+bank:
+  bank_code: HLB
+  bank_name: Hong Leong Bank
+  company_account: ""
+  file_format: hlb_bulk
+calendar:
+  cutoff_day: 31          # >= month length -> calendar month
+  pay_day: 7
+  pay_in_following_month: true
+ot:
+  block_minutes: 30
+  rounding: floor
+  normal_day_rate: 1.5
+  rest_day_rate: 2.0
+  public_holiday_rate: 3.0
+  monthly_cap_hours: 104
+  warn_at_hours: 80
+  orp_divisor_days: 26
+  hourly_divisor_hours: 8
+statutory:
+  rates_file: config/statutory/my-2025.yaml
+  hrd_levy_enabled: true
+  hrd_levy_rate: 0.01
+default_schedule: day
+schedules:
+  - id: day
+    name: Day (Mon-Fri 8h, Sat 5h)
+    days:
+      mon: {segments: [{start: "08:00", end: "12:00"}, {start: "13:00", end: "17:00"}]}
+      tue: {segments: [{start: "08:00", end: "12:00"}, {start: "13:00", end: "17:00"}]}
+      wed: {segments: [{start: "08:00", end: "12:00"}, {start: "13:00", end: "17:00"}]}
+      thu: {segments: [{start: "08:00", end: "12:00"}, {start: "13:00", end: "17:00"}]}
+      fri: {segments: [{start: "08:00", end: "12:00"}, {start: "13:00", end: "17:00"}]}
+      sat: {segments: [{start: "08:00", end: "13:00"}]}
+unpaid_divisor: calendar_days
+day_boundary: "04:00"
+late_grace_minutes: 5
+minimum_wage_monthly: 1700
+leave_paid:
+  emergency: true
+  compassionate: true
+device_profiles: [zkteco_csv, zkteco_txt, generic_csv, generic_xlsx]
+payslip_languages: [en, ms, zh]

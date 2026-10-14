@@ -1,0 +1,5 @@
+# Factory node API tokens (example only - generate long random tokens and keep this file off git).
+change-me-hr: {user: hr1, role: hr}
+change-me-acct: {user: acct1, role: accountant}
+change-me-mgmt: {user: gm, role: management}
+change-me-agent: {user: cloud-agent, role: agent}

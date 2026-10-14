@@ -1,0 +1,64 @@
+# Factory HR / Payroll Agent (Malaysia V1)
+
+Deterministic payroll engine + factory-local node + multi-factory cloud AI agent.
+The AI (Ilmu Claw via its OpenAI-compatible API) **never calculates pay**; it only explains figures and
+calculation traces produced by the engine.
+
+```
+cloud_agent  (one instance, all factories)  --HTTPS/tunnel-->  factory_node (per factory, 24/7 server)
+   LLM tools: run summary, flags, payslip                         payroll engine + Excel storage (V1)
+```
+
+## Status
+MVP: attendance import, payroll calculation, approval workflow, payslip PDFs, bank file (placeholder layout).
+Not production-ready until the items in *Before go-live* are done.
+
+## Quick start
+```bash
+uv sync
+uv run python scripts/make_sample_data.py              # fictional demo data
+F=config/factories/demo-pahang.yaml
+uv run hr-agent --factory $F import sample_data/zkteco_2026-09.csv --profile zkteco_csv
+uv run hr-agent --factory $F run 2026-09               # creates data/demo-pahang/payroll/2026-09/run_v1.xlsx
+uv run hr-agent --factory $F payslips 2026-09          # PDFs in .../payslips_v1/
+uv run hr-agent --factory $F transition 2026-09 reviewed --version 1 --role accountant
+uv run hr-agent --factory $F transition 2026-09 approved --version 1 --role management
+uv run hr-agent --factory $F bank 2026-09
+uv run pytest && uv run ruff check .
+```
+Payslip PDFs need Noto fonts for Chinese/Bengali/Burmese/Nepali (`fonts-noto-core fonts-noto-cjk`).
+
+## Configuration (nothing factory-specific is hard-coded)
+| File | What |
+|---|---|
+| `config/factories/<id>.yaml` | state, schedules, OT rates/blocks, cut-off & pay day, bank, storage, leave paid/unpaid, languages |
+| `config/device_profiles/*.yaml` | column mapping for each thumbprint device export (add a file for a new brand) |
+| `config/holidays/MY-<state>-<year>.yaml` | public holidays per state |
+| `config/statutory/my-2025.yaml` | EPF/SOCSO/EIS/PCB parameters; official band tables go in `config/statutory/tables/*.csv` |
+| `config/tenants.example.yaml` | cloud agent: factory id -> node URL + token env var |
+
+## Storage
+V1 is Excel only (`storage.backend: excel`): `master.xlsx` (HR-maintained employees, allowances, bonuses, leave,
+attendance overrides), monthly punch files, one immutable workbook per payroll run version, and `audit_log.xlsx`.
+`sqlite` and `postgres` are placeholders behind the same `Store` interface.
+
+## Rules implemented
+- Normal hours from schedule segments (default 08:00-12:00, 13:00-17:00 Mon-Fri; 08:00-13:00 Sat); schedules over
+  9 h/day or 45 h/week are rejected.
+- OT = time after scheduled end, counted in completed 30-minute blocks; 1.5x normal day.
+- Rest day / public holiday: pays the higher of company policy (2x / 3x hourly) and Employment Act s.60(3) / s.60D(3).
+- ORP = monthly salary / 26; hourly = ORP / 8. Unpaid leave and absence deducted by calendar days.
+- Flags: missing punch, absence, OT near/over 104 h, 7 consecutive days, below minimum wage, unapproved bonus,
+  permit/passport expiry, duplicate/missing bank account, unverified statutory tables/holidays.
+- Workflow: draft -> reviewed (accountant) -> approved (management, blocked by error flags) -> locked.
+
+## Before go-live
+1. Replace statutory approximations with official KWSP / PERKESO / EIS tables and verify PCB against LHDN's calculator.
+2. Verify the Pahang holiday file and set `verified: true`.
+3. Get Hong Leong Bank's bulk payment template (current `hlb_bulk` layout is a placeholder).
+4. Run in parallel with the Excel payroll for 2 months.
+5. Native-speaker review of payslip translations; add Bengali, Burmese and Nepali.
+
+## Roadmap
+Statutory submission files (EPF, SOCSO/EIS, PCB CP39), EA form / Borang E, Telegram/WhatsApp employee Q&A,
+HR documents (JD, offer letters), Singapore rule pack, SQLite/PostgreSQL backends.

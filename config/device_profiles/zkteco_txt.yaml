@@ -1,0 +1,12 @@
+# ZKTeco "attlog" tab-separated dump (no header): user_id, datetime, verify, state, ...
+id: zkteco_txt
+name: ZKTeco attlog TXT (tab separated, no header)
+file_type: csv
+delimiter: "tab"
+has_header: false
+columns:
+  employee_id: 0
+  timestamp: 1
+  direction: 3
+datetime_formats: ["%Y-%m-%d %H:%M:%S"]
+direction_map: {"0": in, "1": out, "4": in, "5": out}

@@ -1,0 +1,50 @@
+[project]
+name = "hr-agent"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "Devin AI", email = "158243242+devin-ai-integration[bot]@users.noreply.github.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.143.0",
+    "filelock>=4.1.1",
+    "httpx>=0.28.1",
+    "jinja2>=3.1.6",
+    "openai>=3.31.0",
+    "openpyxl>=3.1.5",
+    "pydantic>=2.14.1",
+    "python-multipart>=0.0.32",
+    "pyyaml>=6.0.3",
+    "uvicorn[standard]>=0.54.0",
+    "weasyprint>=70.0",
+]
+
+[project.scripts]
+hr-agent = "hr_agent.cli:main"
+
+[build-system]
+requires = ["uv_build>=0.13.1,<0.14.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "ruff>=0.17.0",
+]
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "N"]
+ignore = ["E501"]
+
+[tool.ruff.lint.per-file-ignores]
+"src/hr_agent/money.py" = ["N802"]
+"src/hr_agent/factory_node/app.py" = ["B008"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

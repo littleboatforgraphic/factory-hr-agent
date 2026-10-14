@@ -1,0 +1,5 @@
+# Cloud agent tenant registry: one entry per factory node. Tokens come from env vars, never this file.
+tenants:
+  - factory_id: demo-pahang
+    node_url: https://demo-pahang-node.example.internal   # reached via Cloudflare Tunnel / Tailscale
+    token_env: NODE_TOKEN_DEMO_PAHANG

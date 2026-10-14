@@ -1,0 +1,9 @@
+__pycache__/
+.venv/
+*.pyc
+data/
+.pytest_cache/
+.ruff_cache/
+*.lock
+!uv.lock
+.env

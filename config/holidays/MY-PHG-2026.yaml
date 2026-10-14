@@ -1,0 +1,21 @@
+# Pahang public holidays 2026.
+# verified: false -> dates must be checked against the official gazette before go-live.
+# Lunar/Islamic dates are estimates and must be confirmed.
+country: MY
+state: PHG
+year: 2026
+verified: false
+holidays:
+  - {date: 2026-01-01, name: "New Year's Day"}
+  - {date: 2026-02-17, name: "Chinese New Year"}
+  - {date: 2026-02-18, name: "Chinese New Year (2nd day)"}
+  - {date: 2026-03-21, name: "Hari Raya Aidilfitri (estimate)"}
+  - {date: 2026-03-22, name: "Hari Raya Aidilfitri, 2nd day (estimate)"}
+  - {date: 2026-05-01, name: "Labour Day"}
+  - {date: 2026-05-27, name: "Hari Raya Haji (estimate)"}
+  - {date: 2026-06-01, name: "Birthday of the Yang di-Pertuan Agong"}
+  - {date: 2026-07-30, name: "Birthday of the Sultan of Pahang"}
+  - {date: 2026-08-31, name: "National Day"}
+  - {date: 2026-09-16, name: "Malaysia Day"}
+  - {date: 2026-11-08, name: "Deepavali (estimate)"}
+  - {date: 2026-12-25, name: "Christmas Day"}

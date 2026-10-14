@@ -1,0 +1,202 @@
+from __future__ import annotations
+
+import datetime as dt
+from datetime import datetime, time
+from decimal import Decimal
+from enum import StrEnum
+from typing import Literal
+
+from pydantic import BaseModel, Field
+
+from hr_agent.money import ZERO
+
+
+class LeaveType(StrEnum):
+    annual = "annual"
+    medical = "medical"
+    hospitalisation = "hospitalisation"
+    unpaid = "unpaid"
+    maternity = "maternity"
+    paternity = "paternity"
+    replacement = "replacement"
+    emergency = "emergency"
+    compassionate = "compassionate"
+
+
+DEFAULT_LEAVE_PAID = {t.value: t is not LeaveType.unpaid for t in LeaveType}
+
+
+class Employee(BaseModel):
+    employee_id: str
+    device_user_id: str = ""
+    name: str
+    id_type: Literal["ic", "passport"] = "ic"
+    id_no: str = ""
+    nationality: str = "Malaysian"
+    category: Literal["local", "foreign"] = "local"
+    tax_resident: bool = True
+    date_of_birth: dt.date | None = None
+    join_date: dt.date
+    exit_date: dt.date | None = None
+    department: str = ""
+    position: str = ""
+    schedule_id: str | None = None
+    monthly_salary: Decimal
+    ot_eligible: bool = True
+    bank_name: str = ""
+    bank_account: str = ""
+    epf_no: str = ""
+    socso_no: str = ""
+    tax_no: str = ""
+    marital_status: Literal["single", "married"] = "single"
+    spouse_working: bool = True
+    children: int = 0
+    language: str = "en"
+    phone: str = ""
+    telegram_id: str = ""
+    permit_expiry: dt.date | None = None
+    passport_expiry: dt.date | None = None
+
+    @property
+    def device_id(self) -> str:
+        return self.device_user_id or self.employee_id
+
+
+class Allowance(BaseModel):
+    employee_id: str
+    name: str
+    amount: Decimal
+    epf: bool = True
+    socso: bool = True
+    eis: bool = True
+    taxable: bool = True
+    start: dt.date | None = None
+    end: dt.date | None = None
+
+    def active_in(self, start: dt.date, end: dt.date) -> bool:
+        return (self.start is None or self.start <= end) and (self.end is None or self.end >= start)
+
+
+class Bonus(BaseModel):
+    employee_id: str
+    period: str
+    name: str = "Bonus"
+    amount: Decimal
+    epf: bool = True
+    approved_by: str = ""
+
+
+class LeaveRecord(BaseModel):
+    employee_id: str
+    leave_type: LeaveType
+    start: dt.date
+    end: dt.date
+    half_day: bool = False
+    approved_by: str = ""
+
+
+class Punch(BaseModel):
+    employee_id: str
+    timestamp: datetime
+    device_id: str = ""
+    direction: Literal["in", "out", "unknown"] = "unknown"
+
+
+class AttendanceOverride(BaseModel):
+    employee_id: str
+    date: dt.date
+    check_in: time | None = None
+    check_out: time | None = None
+    reason: str
+    by: str
+
+
+Severity = Literal["info", "warning", "error", "block"]
+
+
+class Flag(BaseModel):
+    severity: Severity
+    code: str
+    message: str
+    employee_id: str | None = None
+    date: dt.date | None = None
+
+
+class Line(BaseModel):
+    kind: Literal["earning", "deduction", "employer"]
+    code: str
+    label: str
+    amount: Decimal
+    quantity: Decimal | None = None
+    rate: Decimal | None = None
+    trace: str = ""
+
+
+class DayResult(BaseModel):
+    date: dt.date
+    day_type: Literal["normal", "rest", "public_holiday"]
+    status: Literal["present", "absent", "leave", "incomplete", "off", "not_employed"]
+    scheduled_hours: Decimal = ZERO
+    check_in: time | None = None
+    check_out: time | None = None
+    normal_hours: Decimal = ZERO
+    ot_hours: Decimal = ZERO
+    worked_hours: Decimal = ZERO
+    late_minutes: int = 0
+    leave_type: LeaveType | None = None
+    leave_days: Decimal = ZERO
+    overridden: bool = False
+
+
+class TaxInfo(BaseModel):
+    """Figures needed for PCB year-to-date and the EA form."""
+
+    normal_taxable: Decimal = ZERO
+    additional_taxable: Decimal = ZERO
+    epf_employee_normal: Decimal = ZERO
+    epf_employee_additional: Decimal = ZERO
+    pcb: Decimal = ZERO
+
+
+class Payslip(BaseModel):
+    employee_id: str
+    employee_name: str
+    period: str
+    attendance_start: dt.date
+    attendance_end: dt.date
+    lines: list[Line]
+    gross: Decimal
+    total_deductions: Decimal
+    net: Decimal
+    employer_cost: Decimal
+    epf_wage: Decimal
+    socso_wage: Decimal
+    ot_hours_total: Decimal
+    tax: TaxInfo
+    days: list[DayResult] = Field(default_factory=list)
+
+
+RunStatus = Literal["draft", "reviewed", "approved", "locked"]
+
+
+class StatusChange(BaseModel):
+    status: RunStatus
+    by: str
+    at: datetime
+    note: str = ""
+
+
+class PayrollRun(BaseModel):
+    factory_id: str
+    period: str
+    version: int = 0
+    status: RunStatus = "draft"
+    created_at: datetime
+    created_by: str
+    payslips: list[Payslip]
+    flags: list[Flag]
+    history: list[StatusChange] = Field(default_factory=list)
+
+    @property
+    def blocking_flags(self) -> list[Flag]:
+        return [f for f in self.flags if f.severity in ("error", "block")]
