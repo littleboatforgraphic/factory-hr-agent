@@ -173,6 +173,7 @@ class Payslip(BaseModel):
     socso_wage: Decimal
     ot_hours_total: Decimal
     tax: TaxInfo
+    ytd: dict[str, Decimal] = Field(default_factory=dict)
     days: list[DayResult] = Field(default_factory=list)
 
 

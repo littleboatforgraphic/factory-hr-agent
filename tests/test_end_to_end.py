@@ -107,3 +107,17 @@ def test_error_flags_block_approval(factory, store, seeded):
     service.transition(store, "2026-09", 2, "reviewed", "acct", "accountant")
     with pytest.raises(ValueError, match="blocking"):
         service.transition(store, "2026-09", 2, "approved", "gm", "management")
+
+
+def test_ytd_accumulates_from_locked_runs(factory, store, seeded):
+    service.import_attendance(factory, store, seeded, "zkteco_csv", "hr1")
+    aug = service.run_payroll(factory, store, "2026-08", "hr1")
+    for target, role in (("reviewed", "accountant"), ("approved", "management"), ("locked", "accountant")):
+        service.transition(store, "2026-08", aug.version, target, "u", role)
+    sep = service.run_payroll(factory, store, "2026-09", "hr1")
+    a = next(p for p in aug.payslips if p.employee_id == "L1")
+    s = next(p for p in sep.payslips if p.employee_id == "L1")
+    assert s.ytd["NET"] == a.net + s.net
+    assert s.ytd["EPF_EE"] == a.ytd["EPF_EE"] + next(ln.amount for ln in s.lines if ln.code == "EPF_EE")
+    html = render_payslip_html(s, emp("L1", "3000", "local"), factory)
+    assert "To Be Credited" in html and "YTD(MYR)" in html

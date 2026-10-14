@@ -10,7 +10,7 @@ from hr_agent.attendance import process_employee_attendance
 from hr_agent.config import FactoryConfig
 from hr_agent.devices import load_profile, parse_export
 from hr_agent.holidays import load_holidays
-from hr_agent.models import Flag, PayrollRun, Punch, RunStatus
+from hr_agent.models import Flag, PayrollRun, Payslip, Punch, RunStatus
 from hr_agent.money import ZERO
 from hr_agent.payroll import YearToDate, compute_payslip
 from hr_agent.periods import attendance_bounds, month_bounds, parse_period
@@ -49,18 +49,31 @@ def import_attendance(factory: FactoryConfig, store: Store, file: str | Path, pr
     }
 
 
-def _year_to_date(store: Store, period: str) -> dict[str, YearToDate]:
+def _year_to_date(store: Store, period: str) -> tuple[dict[str, YearToDate], dict[str, Counter]]:
+    """Totals from earlier locked runs this year: PCB inputs, and per-line amounts for the payslip YTD column."""
     year, month = parse_period(period)
     ytd: dict[str, YearToDate] = defaultdict(YearToDate)
+    lines: dict[str, Counter] = defaultdict(Counter)
     for run in store.runs_for_year(year, locked_only=True):
         if parse_period(run.period)[1] >= month:
             continue
         for p in run.payslips:
+            lines[p.employee_id].update(_line_totals(p))
             y = ytd[p.employee_id]
             y.normal_taxable += p.tax.normal_taxable + p.tax.additional_taxable
             y.epf_employee += p.tax.epf_employee_normal + p.tax.epf_employee_additional
             y.pcb += p.tax.pcb
-    return ytd
+    return ytd, lines
+
+
+def _line_totals(p: Payslip) -> Counter:
+    c: Counter = Counter()
+    for ln in p.lines:
+        c[ln.code] += ln.amount
+    c["GROSS"] += p.gross
+    c["DEDUCTIONS"] += p.total_deductions
+    c["NET"] += p.net
+    return c
 
 
 def run_payroll(factory: FactoryConfig, store: Store, period: str, user: str) -> PayrollRun:
@@ -87,7 +100,7 @@ def run_payroll(factory: FactoryConfig, store: Store, period: str, user: str) ->
     overrides = store.overrides(att_start, att_end)
     allowances = store.allowances()
     bonuses = store.bonuses(period)
-    ytd = _year_to_date(store, period)
+    ytd, ytd_lines = _year_to_date(store, period)
 
     payslips = []
     for emp in employees:
@@ -103,6 +116,9 @@ def run_payroll(factory: FactoryConfig, store: Store, period: str, user: str) ->
             bonuses=[b for b in bonuses if b.employee_id == eid],
             ytd=ytd.get(eid, YearToDate()), statutory=statutory,
         )
+        totals = _line_totals(payslip)
+        totals.update(ytd_lines.get(eid, Counter()))
+        payslip.ytd = dict(totals)
         payslips.append(payslip)
         flags.extend(f1 + f2)
 
