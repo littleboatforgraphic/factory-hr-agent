@@ -126,6 +126,7 @@ class Employer(BaseModel):
     epf_no: str = ""
     socso_no: str = ""
     tax_no: str = ""
+    logo_file: str | None = None
 
 
 class FactoryConfig(BaseModel):

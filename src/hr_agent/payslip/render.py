@@ -1,21 +1,49 @@
 from __future__ import annotations
 
-import calendar
 from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from hr_agent.config import FactoryConfig
 from hr_agent.models import Employee, Payslip
-from hr_agent.money import ZERO
+from hr_agent.money import ZERO, D
 from hr_agent.payslip.i18n import label
-from hr_agent.periods import parse_period, pay_date
+from hr_agent.periods import month_bounds, pay_date
 
 _env = Environment(loader=FileSystemLoader(Path(__file__).parent), autoescape=select_autoescape())
 
 
 def _fmt(amount) -> str:
-    return f"{amount:,.2f}"
+    return f"{D(amount):,.2f}"
+
+
+def _neg(amount) -> str:
+    """Deductions in brackets, e.g. '(     407.00)'."""
+    return "(" + f"{_fmt(amount)})".rjust(13)
+
+
+def build_rows(payslip: Payslip, L) -> list[dict]:  # noqa: N803
+    ytd = payslip.ytd
+
+    def item(ln, bracket=False):
+        text = L(ln.code, ln.label)
+        if ln.quantity and ln.code.startswith(("OT_", "UNPAID")):
+            text += f" ({ln.quantity}{' h' if ln.code.startswith('OT_') else ' d'})"
+        cur, total = ln.amount, ytd.get(ln.code, ln.amount)
+        return {"kind": "item", "text": text, "cur": _neg(cur) if bracket else _fmt(cur), "ytd": _neg(total) if bracket else _fmt(total)}
+
+    rows: list[dict] = [{"kind": "section", "text": L("earnings")}]
+    rows += [item(ln) for ln in payslip.lines if ln.kind == "earning"]
+    rows.append({"kind": "tot", "text": L("gross"), "cur": _fmt(payslip.gross), "ytd": _fmt(ytd.get("GROSS", payslip.gross))})
+    rows.append({"kind": "section", "text": L("deductions")})
+    rows += [item(ln, bracket=True) for ln in payslip.lines if ln.kind == "deduction"]
+    rows.append({"kind": "tot", "text": L("total_deductions"), "cur": _neg(payslip.total_deductions),
+                 "ytd": _neg(ytd.get("DEDUCTIONS", payslip.total_deductions))})
+    rows.append({"kind": "gap"})
+    rows.append({"kind": "net", "text": L("net"), "cur": _fmt(payslip.net), "ytd": _fmt(ytd.get("NET", payslip.net))})
+    rows.append({"kind": "gap"})
+    rows += [{**item(ln), "kind": "plain", "text": L(ln.code + "_FULL", ln.label)} for ln in payslip.lines if ln.kind == "employer"]
+    return rows
 
 
 def render_payslip_html(payslip: Payslip, employee: Employee, factory: FactoryConfig) -> str:
@@ -24,17 +52,6 @@ def render_payslip_html(payslip: Payslip, employee: Employee, factory: FactoryCo
     def L(key: str, fallback: str | None = None) -> str:  # noqa: N802
         return label(key, lang, fallback)
 
-    def rows(kind: str):
-        out = []
-        for ln in payslip.lines:
-            if ln.kind != kind:
-                continue
-            text = L(ln.code, ln.label)
-            if ln.quantity and ln.code.startswith(("OT_", "UNPAID")):
-                text += f" ({ln.quantity}{' h' if ln.code.startswith('OT_') else ' d'})"
-            out.append({"text": text, "amount": _fmt(ln.amount)})
-        return out
-
     days = [d for d in payslip.days if d.status != "not_employed"]
     att = {
         "working": sum(1 for d in days if d.day_type == "normal"),
@@ -42,14 +59,20 @@ def render_payslip_html(payslip: Payslip, employee: Employee, factory: FactoryCo
         "leave": sum((d.leave_days for d in days), ZERO),
         "absent": sum(1 for d in days if d.status == "absent"),
     }
-    y, m = parse_period(payslip.period)
-    p = payslip.model_copy(update={"gross": _fmt(payslip.gross), "net": _fmt(payslip.net), "total_deductions": _fmt(payslip.total_deductions)})
+    start, end = month_bounds(payslip.period)
+    salary = D(employee.monthly_salary)
+    daily = salary / factory.ot.orp_divisor_days
+    hourly = daily / factory.ot.hourly_divisor_hours
+    logo = getattr(factory.employer, "logo_file", None)
     return _env.get_template("template.html").render(
-        L=L, e=employee, p=p, employer=factory.employer,
-        period_label=f"{calendar.month_name[m]} {y}",
-        pay_date=pay_date(payslip.period, factory.calendar).strftime("%d/%m/%Y"),
-        att_range=f"{payslip.attendance_start:%d/%m}–{payslip.attendance_end:%d/%m/%Y}",
-        earnings=rows("earning"), deductions=rows("deduction"), employer_lines=rows("employer"), att=att,
+        L=L, e=employee, p=payslip, employer=factory.employer,
+        logo=factory.resolve(logo).as_uri() if logo else None,
+        location=" / ".join(x for x in (employee.department, factory.state) if x),
+        period_range=f"{start:%d %b %Y} - {end:%d %b %Y}",
+        basic_salary=_fmt(salary), daily=_fmt(daily), hourly=f"{hourly:,.3f}",
+        net=_fmt(payslip.net), pay_date=pay_date(payslip.period, factory.calendar).strftime("%d %b %Y"),
+        att_range=f"{payslip.attendance_start:%d/%m}-{payslip.attendance_end:%d/%m/%Y}",
+        rows=build_rows(payslip, L), att=att,
     )
 
 

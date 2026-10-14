@@ -1,55 +1,59 @@
 <!doctype html>
 <html><head><meta charset="utf-8">
 <style>
-@page { size: A4; margin: 14mm; }
-body { font-family: "Noto Sans", "Noto Sans CJK SC", "Noto Sans Bengali", "Noto Sans Myanmar", "Noto Sans Devanagari", sans-serif; font-size: 9.5pt; color: #111; }
-.head { display: flex; justify-content: space-between; border-bottom: 2px solid #111; padding-bottom: 6px; }
-.co { font-size: 13pt; font-weight: 700; }
-.muted { color: #555; font-size: 8.5pt; }
-h1 { font-size: 13pt; margin: 0; text-align: right; }
+@page { size: A4; margin: 12mm 12mm 14mm; }
+body { font-family: "DejaVu Sans Mono", "Noto Sans Mono CJK SC", "Noto Sans CJK SC", "Noto Sans Bengali", "Noto Sans Myanmar", "Noto Sans Devanagari", monospace; font-size: 8.2pt; color: #111; }
+.logo { font-family: "DejaVu Sans", sans-serif; font-size: 20pt; font-weight: 700; color: #2c6cf6; margin: 0 0 8mm 2mm; }
+.logo img { max-height: 18mm; }
+.boxes { display: flex; gap: 6px; }
+.box { flex: 1; border: 1px solid #111; border-radius: 6px; padding: 4px 8px; min-height: 26mm; line-height: 1.25; }
+.right { text-align: right; }
+.kv { display: inline-block; min-width: 16ch; text-align: right; }
+.main { border: 1px solid #111; border-radius: 6px; margin-top: 8px; min-height: 175mm; }
+.bar { background: #bdbdbd; border-bottom: 1px solid #111; border-radius: 5px 5px 0 0; }
 table { width: 100%; border-collapse: collapse; }
-.info td { padding: 2px 4px; vertical-align: top; }
-.info td.k { color: #555; width: 22%; }
-.money th, .money td { border-bottom: 1px solid #ddd; padding: 4px; }
-.money th { text-align: left; background: #f2f2f2; }
-.num { text-align: right; white-space: nowrap; }
-.cols { display: flex; gap: 12px; margin-top: 10px; }
-.cols > div { flex: 1; }
-.tot td { font-weight: 700; border-top: 1px solid #111; }
-.net { margin-top: 10px; padding: 8px; border: 2px solid #111; display: flex; justify-content: space-between; font-size: 12pt; font-weight: 700; }
-.small { margin-top: 10px; }
-.foot { margin-top: 14px; font-size: 8pt; color: #555; }
+td, th { padding: 0 8px; font-weight: normal; vertical-align: top; }
+th { padding: 4px 8px; font-size: 7.5pt; }
+.c1 { width: 52%; } .c2 { width: 20%; } .c3 { width: 6%; } .c4 { width: 22%; }
+.num { text-align: right; white-space: pre; }
+.ind { padding-left: 3ch; }
+.sec td { padding-top: 10px; }
+.tot td { padding-top: 3px; }
+.tot td.num { border-top: 1px dashed #111; }
+.net td.num { border-bottom: 3px double #111; padding-bottom: 2px; }
+.gap td { height: 10px; }
+.credit { padding: 14px 8px 0; }
+.att { padding: 10px 8px 0; color: #444; }
+.foot { padding: 14px 8px 0; color: #555; font-size: 7pt; }
 </style></head><body>
-<div class="head">
-  <div><div class="co">{{ employer.legal_name }}</div>
-  <div class="muted">{{ employer.registration_no }}<br>{{ employer.address }}</div></div>
-  <div><h1>{{ L('payslip') }}</h1>
-  <div class="muted" style="text-align:right">{{ L('period') }}: {{ period_label }}<br>{{ L('pay_date') }}: {{ pay_date }}</div></div>
+<div class="logo">{% if logo %}<img src="{{ logo }}">{% else %}{{ employer.legal_name }}{% endif %}</div>
+<div class="boxes">
+  <div class="box">
+    {{ employer.legal_name | upper }}<br>
+    {{ location | upper }}<br>
+    {{ e.employee_id }}&nbsp;&nbsp;&nbsp;&nbsp;{{ e.name | upper }}<br>
+    {{ e.id_no }}
+  </div>
+  <div class="box right">
+    Page 1 of 1<br>
+    {{ period_range }}<br>
+    {{ L('basic_salary') }} : MYR <span class="kv">{{ basic_salary }}</span><br>
+    {{ L('daily') }} : MYR <span class="kv">{{ daily }}</span><br>
+    {{ L('hourly') }} : MYR <span class="kv">{{ hourly }}</span>
+  </div>
 </div>
-<table class="info" style="margin-top:8px">
-  <tr><td class="k">{{ L('name') }}</td><td>{{ e.name }}</td><td class="k">{{ L('employee_id') }}</td><td>{{ e.employee_id }}</td></tr>
-  <tr><td class="k">{{ L('id_no') }}</td><td>{{ e.id_no }}</td><td class="k">{{ L('department') }}</td><td>{{ e.department }}</td></tr>
-  <tr><td class="k">{{ L('position') }}</td><td>{{ e.position }}</td><td class="k">{{ L('bank') }}</td><td>{{ e.bank_name }} {{ e.bank_account }}</td></tr>
-  <tr><td class="k">{{ L('epf_no') }}</td><td>{{ e.epf_no }}</td><td class="k">{{ L('socso_no') }}</td><td>{{ e.socso_no }}</td></tr>
-</table>
-<div class="cols">
-  <div><table class="money"><tr><th>{{ L('earnings') }}</th><th class="num">RM</th></tr>
-  {% for ln in earnings %}<tr><td>{{ ln.text }}</td><td class="num">{{ ln.amount }}</td></tr>{% endfor %}
-  <tr class="tot"><td>{{ L('gross') }}</td><td class="num">{{ p.gross }}</td></tr></table></div>
-  <div><table class="money"><tr><th>{{ L('deductions') }}</th><th class="num">RM</th></tr>
-  {% for ln in deductions %}<tr><td>{{ ln.text }}</td><td class="num">{{ ln.amount }}</td></tr>{% endfor %}
-  <tr class="tot"><td>{{ L('total_deductions') }}</td><td class="num">{{ p.total_deductions }}</td></tr></table></div>
+<div class="main">
+  <table>
+    <tr class="bar"><th class="c1"></th><th class="c2 num">MYR</th><th class="c3"></th><th class="c4 num">YTD(MYR)</th></tr>
+    {% for r in rows %}
+      {% if r.kind == 'section' %}<tr class="sec"><td colspan="4">{{ r.text }}</td></tr>
+      {% elif r.kind == 'gap' %}<tr class="gap"><td colspan="4"></td></tr>
+      {% else %}<tr class="{{ r.kind }}"><td class="{{ 'ind' if r.kind == 'item' else '' }}">{{ r.text }}</td><td class="num">{{ r.cur }}</td><td></td><td class="num">{{ r.ytd }}</td></tr>
+      {% endif %}
+    {% endfor %}
+  </table>
+  <div class="credit">MYR {{ net }} {{ L('credited') }} {{ e.bank_account }} {{ L('on') }} {{ pay_date }}</div>
+  <div class="att">{{ L('attendance') }} {{ att_range }}: {{ L('working_days') }} {{ att.working }} | {{ L('present') }} {{ att.present }} | {{ L('leave') }} {{ att.leave }} | {{ L('absent') }} {{ att.absent }} | {{ L('ot_hours') }} {{ p.ot_hours_total }}</div>
+  <div class="foot">{{ L('computer_generated') }}</div>
 </div>
-<div class="net"><span>{{ L('net') }}</span><span>RM {{ p.net }}</span></div>
-<div class="cols small">
-  <div><table class="money"><tr><th>{{ L('employer') }}</th><th class="num">RM</th></tr>
-  {% for ln in employer_lines %}<tr><td>{{ ln.text }}</td><td class="num">{{ ln.amount }}</td></tr>{% endfor %}</table></div>
-  <div><table class="money"><tr><th colspan="2">{{ L('attendance') }} ({{ att_range }})</th></tr>
-  <tr><td>{{ L('working_days') }}</td><td class="num">{{ att.working }}</td></tr>
-  <tr><td>{{ L('present') }}</td><td class="num">{{ att.present }}</td></tr>
-  <tr><td>{{ L('leave') }}</td><td class="num">{{ att.leave }}</td></tr>
-  <tr><td>{{ L('absent') }}</td><td class="num">{{ att.absent }}</td></tr>
-  <tr><td>{{ L('ot_hours') }}</td><td class="num">{{ p.ot_hours_total }}</td></tr></table></div>
-</div>
-<div class="foot">{{ L('computer_generated') }}</div>
 </body></html>
