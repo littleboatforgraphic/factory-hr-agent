@@ -1,9 +1,13 @@
 """Multi-factory cloud agent. Routes each request to the right factory node and lets the LLM
 (Ilmu Claw, via its OpenAI-compatible API) explain results using read-only tools.
-The LLM never calculates pay: it only quotes figures and traces returned by the factory node."""
+The LLM never calculates pay: it only quotes figures and traces returned by the factory node.
+
+LLM calls go through the llm-gateway (LLM_BASE_URL) with one gateway key per factory/client
+(`llm_key_env` in the tenant registry), so token usage is metered and billed per client."""
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 from dataclasses import dataclass
@@ -35,6 +39,10 @@ class Tenant:
     factory_id: str
     node_url: str
     token_env: str
+    llm_key_env: str | None = None  # env var holding this client's llm-gateway key; falls back to LLM_API_KEY
+
+    def llm_api_key(self) -> str | None:
+        return (os.environ.get(self.llm_key_env) if self.llm_key_env else None) or os.environ.get("LLM_API_KEY")
 
     def client(self, transport: httpx.BaseTransport | None = None) -> httpx.Client:
         token = os.environ.get(self.token_env, "")
@@ -74,15 +82,28 @@ class FactoryTools:
         return {"error": 400, "detail": f"Unknown tool {name}"}
 
 
+def usage_user_id(factory_id: str, employee_id: str | None) -> str | None:
+    """Pseudonymous end-user id for gateway usage logs (never the raw employee id or name)."""
+    if employee_id is None:
+        return None
+    return "emp-" + hashlib.sha256(f"{factory_id}:{employee_id}".encode()).hexdigest()[:12]
+
+
 class Agent:
     def __init__(self, tenants: dict[str, Tenant], llm=None, model: str | None = None):
         self.tenants = tenants
         self.model = model or os.environ.get("LLM_MODEL", "ilmu-claw")
-        if llm is None:
+        self._llm = llm  # injected client (tests) is shared by all tenants
+        self._llm_by_tenant: dict[str, Any] = {}
+
+    def llm_for(self, tenant: Tenant):
+        if self._llm is not None:
+            return self._llm
+        if tenant.factory_id not in self._llm_by_tenant:
             from openai import OpenAI
 
-            llm = OpenAI(base_url=os.environ.get("LLM_BASE_URL"), api_key=os.environ.get("LLM_API_KEY"))
-        self.llm = llm
+            self._llm_by_tenant[tenant.factory_id] = OpenAI(base_url=os.environ.get("LLM_BASE_URL"), api_key=tenant.llm_api_key())
+        return self._llm_by_tenant[tenant.factory_id]
 
     def ask(self, factory_id: str, message: str, *, language: str = "en", employee_id: str | None = None,
             http: httpx.Client | None = None, max_steps: int = 5) -> str:
@@ -90,13 +111,18 @@ class Agent:
         if tenant is None:
             raise KeyError(f"Unknown factory {factory_id!r}")
         tools = FactoryTools(http or tenant.client(), employee_id)
+        llm = self.llm_for(tenant)
+        metering: dict[str, Any] = {"extra_body": {"metadata": {"tags": [
+            f"factory:{factory_id}", "op:employee-qa" if employee_id is not None else "op:hr-qa"]}}}
+        if (user := usage_user_id(factory_id, employee_id)) is not None:
+            metering["user"] = user
         tool_list = [t for t in TOOLS if employee_id is None or t["function"]["name"] == "get_payslip"]
         messages: list[dict] = [
             {"role": "system", "content": SYSTEM_PROMPT.format(language=language)},
             {"role": "user", "content": message},
         ]
         for _ in range(max_steps):
-            resp = self.llm.chat.completions.create(model=self.model, messages=messages, tools=tool_list)
+            resp = llm.chat.completions.create(model=self.model, messages=messages, tools=tool_list, **metering)
             msg = resp.choices[0].message
             if not msg.tool_calls:
                 return msg.content or ""

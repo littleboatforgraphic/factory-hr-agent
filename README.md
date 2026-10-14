@@ -35,7 +35,14 @@ Payslip PDFs need Noto fonts for Chinese/Bengali/Burmese/Nepali (`fonts-noto-cor
 | `config/device_profiles/*.yaml` | column mapping for each thumbprint device export (add a file for a new brand) |
 | `config/holidays/MY-<state>-<year>.yaml` | public holidays per state |
 | `config/statutory/my-2025.yaml` | EPF/SOCSO/EIS/PCB parameters; official band tables go in `config/statutory/tables/*.csv` |
-| `config/tenants.example.yaml` | cloud agent: factory id -> node URL + token env var |
+| `config/tenants.example.yaml` | cloud agent: factory id -> node URL + token env var + llm-gateway key env var |
+
+## LLM usage metering
+The cloud agent calls the LLM through [llm-gateway](https://github.com/littleboatforgraphic/llm-gateway), which
+meters tokens per client for billing. Set `LLM_BASE_URL` to the gateway (e.g. `https://llm.example.com/v1`),
+`LLM_MODEL` to a gateway model name (default `ilmu-claw`), and give each tenant its own gateway key via
+`llm_key_env` (created with `gw add-key <client> hr-agent`). Each call is tagged `factory:<id>` and
+`op:hr-qa` / `op:employee-qa`; employee chats send a hashed `user` id, never the employee id or name.
 
 ## Storage
 V1 is Excel only (`storage.backend: excel`): `master.xlsx` (HR-maintained employees, allowances, bonuses, leave,
