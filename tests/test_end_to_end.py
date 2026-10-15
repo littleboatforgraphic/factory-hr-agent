@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -97,6 +98,35 @@ def test_node_api_access_and_agent_routing(factory, store, seeded):
     assert "L1" not in calls[1]["messages"][-1]["content"]
     with pytest.raises(KeyError):
         agent.ask("other-factory", "hi", http=client)
+
+
+def test_agent_meters_llm_calls_per_tenant(monkeypatch):
+    from hr_agent.cloud_agent.agent import load_tenants, usage_user_id
+
+    monkeypatch.setenv("LLM_API_KEY", "sk-default")
+    monkeypatch.setenv("LLM_KEY_DEMO_PAHANG", "sk-pahang")
+    tenants = load_tenants(Path(__file__).parent.parent / "config" / "tenants.example.yaml")
+    assert tenants["demo-pahang"].llm_api_key() == "sk-pahang"
+    assert Tenant("x", "http://n", "T").llm_api_key() == "sk-default"
+
+    monkeypatch.setenv("LLM_BASE_URL", "http://gateway/v1")
+    agent = Agent(tenants)
+    llm = agent.llm_for(tenants["demo-pahang"])
+    assert llm.api_key == "sk-pahang" and str(llm.base_url).startswith("http://gateway/v1")
+    assert agent.llm_for(tenants["demo-pahang"]) is llm
+
+    uid = usage_user_id("demo-pahang", "F1")
+    assert uid.startswith("emp-") and "F1" not in uid and uid != usage_user_id("other", "F1")
+    assert usage_user_id("demo-pahang", None) is None
+
+
+def test_agent_sends_usage_tags(factory, store, seeded):
+    calls = []
+    agent = Agent({factory.id: Tenant(factory.id, "http://node", "X")}, llm=_fake_llm(calls), model="m")
+    emp_client = TestClient(create_app(factory, store, TOKENS), headers={"Authorization": "Bearer t-f1"})
+    agent.ask(factory.id, "my pay?", employee_id="F1", http=emp_client)
+    assert calls[0]["extra_body"]["metadata"]["tags"] == [f"factory:{factory.id}", "op:employee-qa"]
+    assert calls[0]["user"].startswith("emp-")
 
 
 def test_error_flags_block_approval(factory, store, seeded):

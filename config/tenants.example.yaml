@@ -1,5 +1,7 @@
-# Cloud agent tenant registry: one entry per factory node. Tokens come from env vars, never this file.
+# Cloud agent tenant registry: one entry per factory node. Tokens/keys come from env vars, never this file.
+# llm_key_env: env var with this client's llm-gateway key (`gw add-key <client> hr-agent`); falls back to LLM_API_KEY.
 tenants:
   - factory_id: demo-pahang
     node_url: https://demo-pahang-node.example.internal   # reached via Cloudflare Tunnel / Tailscale
     token_env: NODE_TOKEN_DEMO_PAHANG
+    llm_key_env: LLM_KEY_DEMO_PAHANG
