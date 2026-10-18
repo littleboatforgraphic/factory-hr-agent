@@ -4,12 +4,19 @@
 # take precedence over the approximations computed from these rates.
 verified: false
 epf:
+  # Rates confirmed by the user 2026-10 (KWSP Third Schedule): band ceilings RM20 up to RM5,000,
+  # RM100 up to RM20,000, exact wage above RM20,000; every share rounded up to the next ringgit.
   local:
     employee_rate: 0.11
     employer_rate_low: 0.13      # wages <= employer_rate_threshold
     employer_rate_high: 0.12
     employer_rate_threshold: 5000
-  foreign:                       # mandatory from Oct 2025 wages (verify)
+  local_60_plus:                 # Malaysian citizens aged 60-75 (Stage 2)
+    employee_rate: 0.0
+    employer_rate_low: 0.04
+    employer_rate_high: 0.04
+    employer_rate_threshold: 5000
+  foreign:                       # non-Malaysians registered from 1 Aug 1998
     employee_rate: 0.02
     employer_rate_low: 0.02
     employer_rate_high: 0.02

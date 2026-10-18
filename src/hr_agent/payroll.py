@@ -197,10 +197,10 @@ def compute_payslip(
 
     age = _age_on(employee.date_of_birth, month_end)
     if age is not None and age >= 60:
-        flag("warning", "age_60_plus", "Employee is 60+: EPF/SOCSO rates differ; verify manually")
+        flag("warning", "age_60_plus", "Employee is 60+: SOCSO/EIS category differs; verify manually")
 
-    epf = statutory.epf(epf_wage, category)
-    epf_normal = statutory.epf(epf_wage_normal, category)
+    epf = statutory.epf(epf_wage, category, age)
+    epf_normal = statutory.epf(epf_wage_normal, category, age)
     socso = statutory.socso(socso_wage, category)
     eis = statutory.eis(socso_wage, category)
 

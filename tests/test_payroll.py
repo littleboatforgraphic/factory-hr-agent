@@ -84,3 +84,26 @@ def test_pcb_progressive_and_nonresident(factory):
               ytd_epf=Decimal("3000"), ytd_pcb=Decimal("3000"), current_taxable=Decimal("10000"), current_epf=Decimal("1100"))
     assert s.pcb(resident=True, **kw).employee > 0
     assert s.pcb(resident=False, **kw).employee == Decimal("3000.00")
+
+
+def test_epf_bands_and_employer_rate_threshold(factory):
+    s = statutory(factory)
+    assert (s.epf(Decimal("1700"), "local").employee, s.epf(Decimal("1700"), "local").employer) == (187, 221)
+    at5k = s.epf(Decimal("5000"), "local")
+    assert (at5k.employee, at5k.employer) == (550, 650)
+    above5k = s.epf(Decimal("5000.01"), "local")
+    assert (above5k.employee, above5k.employer) == (561, 612)
+    big = s.epf(Decimal("25000.50"), "local")
+    assert (big.employee, big.employer) == (2751, 3001)
+
+
+def test_epf_citizen_60_plus_employer_only(factory):
+    s = statutory(factory)
+    c = s.epf(Decimal("3000"), "local", age=61)
+    assert (c.employee, c.employer) == (0, 120)
+    f = s.epf(Decimal("1700"), "foreign", age=61)
+    assert (f.employee, f.employer) == (34, 34)
+    e = emp("L60", "3000", "local").model_copy(update={"date_of_birth": date(1960, 1, 1)})
+    p, _ = payslip(factory, e)
+    assert not [ln for ln in p.lines if ln.code == "EPF_EE" and ln.amount]
+    assert line(p, "EPF_ER") == 120

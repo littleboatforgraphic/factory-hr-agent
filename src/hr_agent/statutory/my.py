@@ -60,6 +60,7 @@ class MalaysiaStatutory:
         self.tables = {
             ("epf", "local"): table("table_file", "epf"),
             ("epf", "foreign"): table("foreign_table_file", "epf"),
+            ("epf", "local_60_plus"): table("local_60_plus_table_file", "epf"),
             ("socso", "local"): table("table_file", "socso"),
             ("socso", "foreign"): table("foreign_table_file", "socso"),
             ("eis", "local"): table("table_file", "eis"),
@@ -69,14 +70,21 @@ class MalaysiaStatutory:
         return {f"{k[0]}_{k[1]}": v is not None for k, v in self.tables.items()}
 
     # EPF --------------------------------------------------------------
-    def epf(self, wage: Decimal, category: str) -> Contribution:
+    def epf_rate_key(self, category: str, age: int | None) -> str:
+        if category == "local" and age is not None and age >= 60 and "local_60_plus" in self.cfg["epf"]:
+            return "local_60_plus"
+        return category
+
+    def epf(self, wage: Decimal, category: str, age: int | None = None) -> Contribution:
         wage = round_cents(wage)
         if wage <= 0:
             return Contribution(ZERO, ZERO, "No EPF wages")
-        official = self.tables[("epf", category)]
+        key = self.epf_rate_key(category, age)
+        official = self.tables.get(("epf", key))
         if official and (hit := official.lookup(wage)):
-            return Contribution(hit[0], hit[1], f"EPF official table ({category}) for wage RM{wage}")
-        c = self.cfg["epf"][category]
+            return Contribution(hit[0], hit[1], f"EPF official table ({key}) for wage RM{wage}")
+        c = self.cfg["epf"][key]
+        category = key
         if wage <= 10:
             return Contribution(ZERO, ZERO, "EPF: wages RM10 and below are exempt")
         if wage <= 5000:
