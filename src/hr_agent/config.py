@@ -114,7 +114,7 @@ class BankConfig(BaseModel):
 
 
 class StatutoryOptions(BaseModel):
-    rates_file: str = "config/statutory/my-2025.yaml"
+    rates_file: str = "config/statutory/my-2026.yaml"
     hrd_levy_enabled: bool = True
     hrd_levy_rate: Decimal = Decimal("0.01")
 

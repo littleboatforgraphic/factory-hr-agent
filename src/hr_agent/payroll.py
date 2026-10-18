@@ -196,13 +196,13 @@ def compute_payslip(
     socso_wage = basic + unpaid_amt + ot_amt + socso_extra
 
     age = _age_on(employee.date_of_birth, month_end)
-    if age is not None and age >= 60:
-        flag("warning", "age_60_plus", "Employee is 60+: SOCSO/EIS category differs; verify manually")
+    if age is None and category == "local":
+        flag("warning", "no_date_of_birth", "No date of birth: EPF/SOCSO/EIS assume under 60")
 
     epf = statutory.epf(epf_wage, category, age)
     epf_normal = statutory.epf(epf_wage_normal, category, age)
-    socso = statutory.socso(socso_wage, category)
-    eis = statutory.eis(socso_wage, category)
+    socso = statutory.socso(socso_wage, category, age, employee.socso_category)
+    eis = statutory.eis(socso_wage, category, age, employee.eis_exempt)
 
     normal_taxable = gross - bonus_total
     married_nonworking = employee.marital_status == "married" and not employee.spouse_working

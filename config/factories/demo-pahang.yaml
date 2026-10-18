@@ -34,7 +34,7 @@ ot:
   orp_divisor_days: 26
   hourly_divisor_hours: 8
 statutory:
-  rates_file: config/statutory/my-2025.yaml
+  rates_file: config/statutory/my-2026.yaml
   hrd_levy_enabled: true
   hrd_levy_rate: 0.01
 default_schedule: day

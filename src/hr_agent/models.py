@@ -47,6 +47,9 @@ class Employee(BaseModel):
     bank_account: str = ""
     epf_no: str = ""
     socso_no: str = ""
+    # "second" for employees who first joined SOCSO at 55+ with no prior contribution; "auto" picks by age.
+    socso_category: Literal["auto", "first", "second"] = "auto"
+    eis_exempt: bool = False  # e.g. first employed at 57+ with no prior EIS contribution
     tax_no: str = ""
     marital_status: Literal["single", "married"] = "single"
     spouse_working: bool = True
