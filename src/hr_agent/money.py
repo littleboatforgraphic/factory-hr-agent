@@ -1,4 +1,4 @@
-from decimal import ROUND_CEILING, ROUND_FLOOR, ROUND_HALF_UP, Decimal
+from decimal import ROUND_CEILING, ROUND_DOWN, ROUND_FLOOR, ROUND_HALF_UP, Decimal
 
 ZERO = Decimal("0")
 CENT = Decimal("0.01")
@@ -15,6 +15,10 @@ def D(value) -> Decimal:
 
 def round_cents(value) -> Decimal:
     return D(value).quantize(CENT, ROUND_HALF_UP)
+
+
+def trunc_cents(value) -> Decimal:
+    return D(value).quantize(CENT, ROUND_DOWN)
 
 
 def ceil_ringgit(value) -> Decimal:

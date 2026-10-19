@@ -34,7 +34,7 @@ Payslip PDFs need Noto fonts for Chinese/Bengali/Burmese/Nepali (`fonts-noto-cor
 | `config/factories/<id>.yaml` | state, schedules, OT rates/blocks, cut-off & pay day, bank, storage, leave paid/unpaid, languages |
 | `config/device_profiles/*.yaml` | column mapping for each thumbprint device export (add a file for a new brand) |
 | `config/holidays/MY-<state>-<year>.yaml` | public holidays per state |
-| `config/statutory/my-2025.yaml` | EPF/SOCSO/EIS/PCB parameters; official band tables go in `config/statutory/tables/*.csv` |
+| `config/statutory/my-2026.yaml` | EPF/SOCSO/EIS/PCB parameters; official band tables go in `config/statutory/tables/*.csv` |
 | `config/tenants.example.yaml` | cloud agent: factory id -> node URL + token env var + llm-gateway key env var |
 
 ## LLM usage metering
@@ -57,10 +57,15 @@ attendance overrides), monthly punch files, one immutable workbook per payroll r
 - ORP = monthly salary / 26; hourly = ORP / 8. Unpaid leave and absence deducted by calendar days.
 - Flags: missing punch, absence, OT near/over 104 h, 7 consecutive days, below minimum wage, unapproved bonus,
   permit/passport expiry, duplicate/missing bank account, unverified statutory tables/holidays.
+- Statutory: EPF by citizenship/age (11%/13%|12%, 60+ 0%/4%, foreign 2%/2%); SOCSO from the official PERKESO
+  table (First Category, Second Category for 60+ or `socso_category: second`, foreign workers: employer pays the
+  full Second Category total, i.e. employment injury + 24-hour cover); EIS from the official Act 800 table for locals aged 18-59 (`eis_exempt` overrides);
+  PCB per the LHDN 2026 computerised calculation spec (normal + additional remuneration, TP1 deductions hook).
 - Workflow: draft -> reviewed (accountant) -> approved (management, blocked by error flags) -> locked.
 
 ## Before go-live
-1. Replace statutory approximations with official KWSP / PERKESO / EIS tables and verify PCB against LHDN's calculator.
+1. Cross-check EPF against the KWSP Third Schedule and PCB against LHDN's MTD calculator, then set `verified: true`
+   in `config/statutory/my-2026.yaml`.
 2. Verify the Pahang holiday file and set `verified: true`.
 3. Get Hong Leong Bank's bulk payment template (current `hlb_bulk` layout is a placeholder).
 4. Run in parallel with the Excel payroll for 2 months.

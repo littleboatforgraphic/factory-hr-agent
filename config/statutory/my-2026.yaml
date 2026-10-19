@@ -1,0 +1,67 @@
+# Malaysia statutory parameters. verified: false until checked against official
+# KWSP / PERKESO / LHDN publications. Official band tables can be dropped into
+# config/statutory/tables/*.csv (wage_from,wage_to,employee,employer) and then
+# take precedence over the approximations computed from these rates.
+verified: false
+epf:
+  # Rates confirmed by the user 2026-10 (KWSP Third Schedule): band ceilings RM20 up to RM5,000,
+  # RM100 up to RM20,000, exact wage above RM20,000; every share rounded up to the next ringgit.
+  local:
+    employee_rate: 0.11
+    employer_rate_low: 0.13      # wages <= employer_rate_threshold
+    employer_rate_high: 0.12
+    employer_rate_threshold: 5000
+  local_60_plus:                 # Malaysian citizens aged 60-75 (Stage 2)
+    employee_rate: 0.0
+    employer_rate_low: 0.04
+    employer_rate_high: 0.04
+    employer_rate_threshold: 5000
+  foreign:                       # non-Malaysians registered from 1 Aug 1998
+    employee_rate: 0.02
+    employer_rate_low: 0.02
+    employer_rate_high: 0.02
+    employer_rate_threshold: 5000
+  table_file: config/statutory/tables/epf_local.csv
+  foreign_table_file: config/statutory/tables/epf_foreign.csv
+socso:
+  # Official PERKESO Act 4 table incl. SKBBK (NewContributionRateIncludingSKBBK.pdf). The rates below
+  # are only a fallback if a table file is missing.
+  wage_ceiling: 6000
+  first:   {employee_rate: 0.0125, employer_rate: 0.0175}  # EI + invalidity + non-employment injury
+  second:  {employee_rate: 0.0075, employer_rate: 0.0125}  # 60+, or first joined at 55+
+  foreign: {employee_rate: 0.0,    employer_rate: 0.02}    # EI + 24-hour cover, all paid by employer
+  first_category_table_file: config/statutory/tables/socso_cat1.csv
+  second_category_table_file: config/statutory/tables/socso_cat2.csv
+  foreign_table_file: config/statutory/tables/socso_foreign.csv
+eis:
+  # Official PERKESO Act 800 table (151124-Rate Contribution ACT 800.pdf); local employees aged 18-59.
+  wage_ceiling: 6000
+  employee_rate: 0.002
+  employer_rate: 0.002
+  min_age: 18
+  max_age: 60
+  table_file: config/statutory/tables/eis.csv
+pcb:
+  # LHDN 'Specification for MTD calculations using computerized calculation for 2026' (updated
+  # 1 Jan 2026): Table 1 brackets, reliefs D/S/Q, RM400 rebates for P <= RM35,000, EPF qualifying amount
+  # RM4,000, non-resident 30%, MTD below RM10 not deducted. Resident brackets: [lower bound, rate]
+  brackets:
+    - [0, 0.0]
+    - [5000, 0.01]
+    - [20000, 0.03]
+    - [35000, 0.06]
+    - [50000, 0.11]
+    - [70000, 0.19]
+    - [100000, 0.25]
+    - [400000, 0.26]
+    - [600000, 0.28]
+    - [2000000, 0.30]
+  individual_relief: 9000
+  spouse_relief: 4000
+  child_relief: 2000
+  epf_relief_cap: 4000
+  rebate_threshold: 35000
+  individual_rebate: 400
+  spouse_rebate: 400
+  non_resident_rate: 0.30
+  minimum_deduction: 10
