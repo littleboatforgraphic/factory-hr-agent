@@ -29,7 +29,7 @@ socso:
   wage_ceiling: 6000
   first:   {employee_rate: 0.0125, employer_rate: 0.0175}  # EI + invalidity + non-employment injury
   second:  {employee_rate: 0.0075, employer_rate: 0.0125}  # 60+, or first joined at 55+
-  foreign: {employee_rate: 0.0,    employer_rate: 0.0125}  # employment injury only
+  foreign: {employee_rate: 0.0,    employer_rate: 0.02}    # EI + 24-hour cover, all paid by employer
   first_category_table_file: config/statutory/tables/socso_cat1.csv
   second_category_table_file: config/statutory/tables/socso_cat2.csv
   foreign_table_file: config/statutory/tables/socso_foreign.csv

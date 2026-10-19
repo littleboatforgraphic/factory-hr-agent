@@ -58,8 +58,8 @@ attendance overrides), monthly punch files, one immutable workbook per payroll r
 - Flags: missing punch, absence, OT near/over 104 h, 7 consecutive days, below minimum wage, unapproved bonus,
   permit/passport expiry, duplicate/missing bank account, unverified statutory tables/holidays.
 - Statutory: EPF by citizenship/age (11%/13%|12%, 60+ 0%/4%, foreign 2%/2%); SOCSO from the official PERKESO
-  table (First Category, Second Category for 60+ or `socso_category: second`, foreign workers employer-only
-  employment injury); EIS from the official Act 800 table for locals aged 18-59 (`eis_exempt` overrides);
+  table (First Category, Second Category for 60+ or `socso_category: second`, foreign workers: employer pays the
+  full Second Category total, i.e. employment injury + 24-hour cover); EIS from the official Act 800 table for locals aged 18-59 (`eis_exempt` overrides);
   PCB per the LHDN 2026 computerised calculation spec (normal + additional remuneration, TP1 deductions hook).
 - Workflow: draft -> reviewed (accountant) -> approved (management, blocked by error flags) -> locked.
 

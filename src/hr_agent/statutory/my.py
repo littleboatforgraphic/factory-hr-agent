@@ -144,7 +144,7 @@ class MalaysiaStatutory:
             return Contribution(ZERO, ZERO, "No SOCSO wages")
         key = self.socso_category(category, age, override)
         label = {"first": "SOCSO First Category", "second": "SOCSO Second Category",
-                 "foreign": "SOCSO Employment Injury (foreign worker, employer only)"}[key]
+                 "foreign": "SOCSO foreign worker (EI + 24-hour cover, employer pays all)"}[key]
         wage = round_cents(wage)
         official = self.tables[("socso", key)]
         if official and (hit := official.lookup(wage)):

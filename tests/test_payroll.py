@@ -123,7 +123,7 @@ def test_socso_official_tables_by_category(factory):
     capped = s.socso(Decimal("9000"), "local", age=30)
     assert (capped.employee, capped.employer) == (Decimal("74.40"), Decimal("104.15"))
     fw = s.socso(Decimal("1750"), "foreign", age=30)
-    assert (fw.employee, fw.employer) == (Decimal("0.00"), Decimal("21.90"))
+    assert (fw.employee, fw.employer) == (Decimal("0.00"), Decimal("35.05"))
     assert all(s.uses_official_tables()[k] for k in ("socso_first", "socso_second", "socso_foreign", "eis_local"))
 
 
