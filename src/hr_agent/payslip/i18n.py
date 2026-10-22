@@ -5,7 +5,7 @@ LABELS: dict[str, dict[str, str]] = {
     "page": {"en": "Page", "ms": "Muka", "zh": "页"},
     "page_of": {"en": "Page 1 of 1", "ms": "Muka 1 daripada 1", "zh": "第 1 页，共 1 页"},
     "entitled": {"en": "Entitled", "ms": "Kelayakan", "zh": "应享"},
-    "brought_forward": {"en": "B/F", "ms": "B/H", "zh": "结转"},
+    "carry_forward": {"en": "Carry Forward", "ms": "Bawa Depan", "zh": "结转"},
     "this_month": {"en": "This month", "ms": "Bulan ini", "zh": "本月"},
     "taken_ytd": {"en": "Taken YTD", "ms": "Diambil (tahun)", "zh": "年度已休"},
     "balance": {"en": "Balance", "ms": "Baki", "zh": "余额"},
@@ -78,15 +78,15 @@ MONTHS = {
 }
 
 
-def label(key: str, primary: str = "en", secondary: str | None = None, fallback: str | None = None) -> str:
-    """Label in the primary language (English or Malay), plus ' / <secondary>' when a translation exists."""
+def label(key: str, primary: str = "en", secondary: str | None = None, fallback: str | None = None) -> tuple[str, str | None]:
+    """(primary text, secondary text or None). Primary is English or Malay; secondary only if translated."""
     entry = LABELS.get(key)
     if not entry:
-        return fallback or key
-    return join_languages({**entry}, entry["en"], primary, secondary)
+        return fallback or key, None
+    return pick(entry, entry["en"], primary, secondary)
 
 
-def join_languages(texts: dict[str, str], default: str, primary: str, secondary: str | None) -> str:
+def pick(texts: dict[str, str], default: str, primary: str, secondary: str | None) -> tuple[str, str | None]:
     first = texts.get(primary) or default
     other = texts.get(secondary) if secondary else None
-    return f"{first} / {other}" if other and other != first else first
+    return first, (other if other and other != first else None)

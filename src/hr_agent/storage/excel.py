@@ -1,7 +1,7 @@
 """Excel-only storage (V1). Each factory's data lives in workbooks on its own server.
 
 Layout under the storage root:
-  master.xlsx                      Employees, PayItems, Leave, LeaveBalances, Overrides (HR-maintained)
+  master.xlsx                      Employees, PayItems, Leave, LeaveBalances, LeaveCredits, Overrides
   attendance/punches_YYYY-MM.xlsx  imported punches, one file per month
   payroll/YYYY-MM/run_vN.xlsx      one immutable file per payroll run version
   audit_log.xlsx                   append-only audit trail
@@ -21,6 +21,7 @@ from hr_agent.models import (
     AttendanceOverride,
     Employee,
     LeaveBalance,
+    LeaveCredit,
     LeaveRecord,
     PayItemEntry,
     PayrollRun,
@@ -35,6 +36,7 @@ MASTER_SHEETS: dict[str, list[str]] = {
     "PayItems": list(PayItemEntry.model_fields),
     "Leave": list(LeaveRecord.model_fields),
     "LeaveBalances": list(LeaveBalance.model_fields),
+    "LeaveCredits": list(LeaveCredit.model_fields),
     "Overrides": list(AttendanceOverride.model_fields),
 }
 _BOOL = {"y": True, "yes": True, "true": True, "1": True, "n": False, "no": False, "false": False, "0": False}
@@ -146,6 +148,26 @@ class ExcelStore(Store):
     def leave_balances(self, year: int) -> list[LeaveBalance]:
         recs = [LeaveBalance.model_validate(_as_text_ids(r, "employee_id")) for r in _read_sheet(self.master, "LeaveBalances")]
         return [r for r in recs if r.year == year]
+
+    def leave_credits(self, year: int) -> list[LeaveCredit]:
+        recs = [LeaveCredit.model_validate(_as_text_ids(r, "employee_id", "manager_confirmed_by"))
+                for r in _read_sheet(self.master, "LeaveCredits")]
+        return [r for r in recs if r.year == year]
+
+    def add_leave_credit(self, credit: LeaveCredit) -> LeaveCredit:
+        header = MASTER_SHEETS["LeaveCredits"]
+        with self._lock:
+            wb = load_workbook(self.master)
+            ws = wb["LeaveCredits"] if "LeaveCredits" in wb.sheetnames else wb.create_sheet("LeaveCredits")
+            if ws.max_row == 1 and ws.cell(1, 1).value is None:
+                ws.append(header)
+            row = credit.model_dump()
+            ws.append([_cell(row[h].value if hasattr(row[h], "value") else row[h]) for h in header])
+            wb.save(self.master)
+        who = credit.recorded_by + (f" for {credit.on_behalf_of}" if credit.on_behalf_of else "")
+        self.audit("leave_credit", who, f"{credit.employee_id} +{credit.days} {credit.leave_type.value} {credit.year}"
+                   f" (worked {credit.worked_on}; manager {credit.manager_confirmed_by}; {credit.reason})")
+        return credit
 
     def overrides(self, start: date, end: date) -> list[AttendanceOverride]:
         recs = [AttendanceOverride.model_validate(_as_text_ids(r, "employee_id")) for r in _read_sheet(self.master, "Overrides")]

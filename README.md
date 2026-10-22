@@ -63,15 +63,22 @@ Each company defines its own pay items once; HR then enters only employee, item 
 
 ## Payslip language and leave table
 - `payslip_language_mode`: `en`, `ms`, `en+employee` or `ms+employee` (adds the employee's `language` when it is
-  listed in `payslip_languages`).
+  listed in `payslip_languages`). With two languages each label shows the main language with the second language
+  on the line beneath; the leave table uses the main language only.
 - Below the attendance line (working days, present, absent, OT hours) the payslip has a leave table: entitled,
-  brought forward, taken this month, taken this year, balance. Annual, medical and hospitalisation always show;
+  carry forward, taken this month, taken this year, balance. Annual, medical and hospitalisation always show;
   other types show when used, set on the `LeaveBalances` sheet, or configured in `leave_entitlements`.
 - Entitlements: `leave_entitlements` in the factory file, never below the Employment Act minimums (annual 8/12/16 and
   medical 14/18/22 days for <2 / 2-5 / 5+ years of service, annual prorated in the first year; hospitalisation 60
   incl. MC; maternity 98 calendar days; paternity 7). `LeaveBalances` rows (employee, year, leave_type, entitled,
-  carried_forward) set per-employee entitlements and days brought forward. Leave days exclude rest days and
+  carried_forward) set per-employee entitlements and days carried forward. Leave days exclude rest days and
   public holidays (maternity counts calendar days).
+
+### Replacement leave
+HR records replacement leave per employee after confirming with the employee and their manager
+(`POST /leave/replacement`, saved to the `LeaveCredits` sheet and the audit log). An HR officer can also instruct the
+agent to record it: `Agent.ask(..., hr_user=...)` enables the `record_replacement_leave` tool, and the factory node
+accepts it only on behalf of a user with the `hr` role. Credits add to the replacement-leave entitlement for the year.
 
 ## Rules implemented
 - Normal hours from schedule segments (default 08:00-12:00, 13:00-17:00 Mon-Fri; 08:00-13:00 Sat); schedules over

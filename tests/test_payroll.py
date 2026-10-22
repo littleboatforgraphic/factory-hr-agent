@@ -295,17 +295,22 @@ def test_leave_entitlements_follow_employment_act_minimums(factory):
 
 
 def test_payslip_language_modes(factory):
+    from hr_agent.models import LeaveSummaryRow
     from hr_agent.payslip import render_payslip_html
     e = emp(language="zh")
     p, _ = payslip(factory, e)
+    p.leave = [LeaveSummaryRow(leave_type=LeaveType.annual, entitled=Decimal(16), balance=Decimal(16))]
 
     def html(mode, employee=e):
         return render_payslip_html(p, employee, factory.model_copy(update={"payslip_language_mode": mode}))
 
-    assert "Basic Salary / 基本工资" in html("en+employee")
+    both = html("en+employee")
+    assert 'Basic Salary<br><span class="sub">基本工资</span>' in both and '<span class="sub">基本工资</span>' in both  # second language beneath
+    assert "Net Pay<br><span class=\"sub\">实发工资</span>" in both
+    assert "Carry Forward" in both and "结转" not in both  # leave table stays in the main language
     en = html("en")
-    assert "Basic Salary" in en and "基本工资" not in en and "Gaji" not in en
+    assert "Basic Salary" in en and "基本工资" not in en and "Gaji" not in en and 'class="sub"' not in en
     ms = html("ms")
-    assert "Gaji Pokok" in ms and "Basic Salary" not in ms and "Muka 1 daripada 1" in ms
-    assert "Gaji Pokok / 基本工资" in html("ms+employee")
-    assert "Gaji Pokok / " not in html("ms+employee", emp(language="ms"))
+    assert "Gaji Pokok" in ms and "Basic Salary" not in ms and "Muka 1 daripada 1" in ms and "Bawa Depan" in ms
+    assert '<span class="sub">基本工资</span>' in html("ms+employee")
+    assert 'class="sub"' not in html("ms+employee", emp(language="ms"))

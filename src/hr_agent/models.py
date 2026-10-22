@@ -102,6 +102,23 @@ class LeaveBalance(BaseModel):
     carried_forward: Decimal = ZERO
 
 
+class LeaveCredit(BaseModel):
+    """Leave days granted to one employee, e.g. replacement leave for working a rest day or public holiday.
+    Recorded by HR (or the agent on an HR officer's instruction) after the employee and manager confirm."""
+
+    employee_id: str
+    year: int
+    leave_type: LeaveType = LeaveType.replacement
+    days: Decimal = Field(gt=0)
+    worked_on: dt.date | None = None
+    reason: str = ""
+    employee_confirmed: bool = False
+    manager_confirmed_by: str = ""
+    recorded_by: str = ""
+    on_behalf_of: str = ""
+    recorded_at: datetime | None = None
+
+
 class LeaveSummaryRow(BaseModel):
     leave_type: LeaveType
     entitled: Decimal | None = None

@@ -6,7 +6,7 @@ from datetime import date, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 
 from hr_agent.config import EA_LEAVE_MINIMUMS, WEEKDAYS, FactoryConfig, LeaveEntitlement
-from hr_agent.models import Employee, LeaveBalance, LeaveRecord, LeaveSummaryRow, LeaveType
+from hr_agent.models import Employee, LeaveBalance, LeaveCredit, LeaveRecord, LeaveSummaryRow, LeaveType
 from hr_agent.money import ZERO
 
 ALWAYS_SHOWN = (LeaveType.annual, LeaveType.medical, LeaveType.hospitalisation)
@@ -57,9 +57,14 @@ def summarise_leave(
     year: int,
     month_start: date,
     as_of: date,
+    credits: list[LeaveCredit] = (),
 ) -> list[LeaveSummaryRow]:
     year_start = date(year, 1, 1)
     by_type = {b.leave_type: b for b in balances if b.year == year}
+    granted: dict[LeaveType, Decimal] = {}
+    for c in credits:
+        if c.year == year:
+            granted[c.leave_type] = granted.get(c.leave_type, ZERO) + c.days
     taken: dict[LeaveType, tuple[Decimal, Decimal]] = {}
     for t in LeaveType:
         rule = factory.leave_entitlements.get(t.value) or EA_LEAVE_MINIMUMS.get(t.value)
@@ -72,11 +77,14 @@ def summarise_leave(
     for t in LeaveType:
         bal = by_type.get(t)
         month, ytd = taken[t]
-        shown = t in ALWAYS_SHOWN or ytd > 0 or bal is not None or t.value in factory.leave_entitlements
+        shown = (t in ALWAYS_SHOWN or ytd > 0 or bal is not None or t in granted
+                 or t.value in factory.leave_entitlements)
         if not shown:
             continue
         entitled = None if t is LeaveType.unpaid else entitlement(
             employee, factory, t.value, year, as_of, bal.entitled if bal else None)
+        if t in granted:
+            entitled = (entitled or ZERO) + granted[t]
         cf = bal.carried_forward if bal else ZERO
         used = ytd + (taken[LeaveType.medical][1] if t is LeaveType.hospitalisation else ZERO)  # s.60F: 60 days incl. sick leave
         balance = None if entitled is None else entitled + cf - used

@@ -29,8 +29,13 @@ th { padding: 4px 8px; font-size: 7.5pt; }
 .lv th { text-align: right; border-bottom: 1px solid #111; }
 .lv th:first-child, .lv td:first-child { text-align: left; padding-left: 0; }
 .lv td { text-align: right; }
+.hdr { width: auto; margin-left: auto; }
+.hdr td { padding: 0; text-align: right; }
+.hdr td.mid { padding: 0 0 0 1ch; white-space: pre; }
+.sub { color: #444; font-size: 7.6pt; }
 .foot { padding: 14px 8px 0; color: #555; font-size: 7pt; }
 </style></head><body>
+{% macro sub(key) %}{% if bilingual and S(key) != P(key) %}<br><span class="sub">{{ S(key) }}</span>{% endif %}{% endmacro %}
 <div class="logo">{% if logo %}<img src="{{ logo }}">{% else %}{{ employer.legal_name }}{% endif %}</div>
 <div class="boxes">
   <div class="box">
@@ -40,11 +45,13 @@ th { padding: 4px 8px; font-size: 7.5pt; }
     {{ e.id_no }}
   </div>
   <div class="box right">
-    {{ L('page_of') }}<br>
+    {{ P('page_of') }}{{ sub('page_of') }}<br>
     {{ period_range }}<br>
-    {{ L('basic_salary') }} : MYR <span class="kv">{{ basic_salary }}</span><br>
-    {{ L('daily') }} : MYR <span class="kv">{{ daily }}</span><br>
-    {{ L('hourly') }} : MYR <span class="kv">{{ hourly }}</span>
+    <table class="hdr">
+      {% for key, value in (('basic_salary', basic_salary), ('daily', daily), ('hourly', hourly)) %}
+      <tr><td>{{ P(key) }}{{ sub(key) }}</td><td class="mid">: MYR</td><td class="kv">{{ value }}</td></tr>
+      {% endfor %}
+    </table>
   </div>
 </div>
 <div class="main">
@@ -57,11 +64,13 @@ th { padding: 4px 8px; font-size: 7.5pt; }
       {% endif %}
     {% endfor %}
   </table>
-  <div class="credit">MYR {{ net }} {{ L('credited') }} {{ e.bank_account }} {{ L('on') }} {{ pay_date }}</div>
-  <div class="att">{{ L('attendance') }} {{ att_range }}: {{ L('working_days') }} {{ att.working }} | {{ L('present') }} {{ att.present }} | {{ L('absent') }} {{ att.absent }} | {{ L('ot_hours') }} {{ p.ot_hours_total }}</div>
+  <div class="credit">MYR {{ net }} {{ P('credited') }} {{ e.bank_account }} {{ P('on') }} {{ pay_date }}
+    {% if bilingual %}<br><span class="sub">MYR {{ net }} {{ S('credited') }} {{ e.bank_account }} {{ S('on') }} {{ pay_date }}</span>{% endif %}</div>
+  <div class="att">{{ P('attendance') }} {{ att_range }}: {{ P('working_days') }} {{ att.working }} | {{ P('present') }} {{ att.present }} | {{ P('absent') }} {{ att.absent }} | {{ P('ot_hours') }} {{ p.ot_hours_total }}
+    {% if bilingual %}<br><span class="sub">{{ S('attendance') }} {{ att_range }}: {{ S('working_days') }} {{ att.working }} | {{ S('present') }} {{ att.present }} | {{ S('absent') }} {{ att.absent }} | {{ S('ot_hours') }} {{ p.ot_hours_total }}</span>{% endif %}</div>
   {% if leave %}
   <table class="lv">
-    <tr><th>{{ L('leave') }}</th><th>{{ L('entitled') }}</th><th>{{ L('brought_forward') }}</th><th>{{ L('this_month') }}</th><th>{{ L('taken_ytd') }}</th><th>{{ L('balance') }}</th></tr>
+    <tr><th>{{ P('leave') }}</th><th>{{ P('entitled') }}</th><th>{{ P('carry_forward') }}</th><th>{{ P('this_month') }}</th><th>{{ P('taken_ytd') }}</th><th>{{ P('balance') }}</th></tr>
     {% for r in leave %}<tr><td>{{ r.type }}</td><td>{{ r.entitled }}</td><td>{{ r.cf }}</td><td>{{ r.month }}</td><td>{{ r.ytd }}</td><td>{{ r.balance }}</td></tr>
     {% endfor %}
   </table>

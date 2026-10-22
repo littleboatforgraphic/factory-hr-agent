@@ -9,6 +9,7 @@ from hr_agent.models import (
     AttendanceOverride,
     Employee,
     LeaveBalance,
+    LeaveCredit,
     LeaveRecord,
     PayItemEntry,
     PayrollRun,
@@ -34,6 +35,12 @@ class Store(ABC):
 
     @abstractmethod
     def leave_balances(self, year: int) -> list[LeaveBalance]: ...
+
+    @abstractmethod
+    def leave_credits(self, year: int) -> list[LeaveCredit]: ...
+
+    @abstractmethod
+    def add_leave_credit(self, credit: LeaveCredit) -> LeaveCredit: ...
 
     @abstractmethod
     def overrides(self, start: date, end: date) -> list[AttendanceOverride]: ...
