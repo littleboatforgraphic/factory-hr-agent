@@ -256,3 +256,56 @@ def test_factory_overrides_and_removes_default_items(tmp_path):
     cfg.write_text(yaml.safe_dump(data))
     with pytest.raises(ValueError, match="reserved"):
         load_factory(cfg, base_dir=ROOT)
+
+
+def test_leave_entitlements_follow_employment_act_minimums(factory):
+    from hr_agent.leave import summarise_leave
+    from hr_agent.models import LeaveBalance
+
+    def rows(e, records=(), balances=(), f=factory):
+        out = summarise_leave(employee=e, factory=f, records=list(records), balances=list(balances),
+                              holidays={date(2026, 9, 16)}, year=2026, month_start=date(2026, 9, 1), as_of=date(2026, 9, 30))
+        return {r.leave_type.value: r for r in out}
+
+    senior = rows(emp())  # joined 2020: 6 years of service
+    assert (senior["annual"].entitled, senior["medical"].entitled, senior["hospitalisation"].entitled) == (16, 22, 60)
+    assert "maternity" not in senior and senior["emergency"].entitled == 3  # company-set type shown
+    junior = rows(emp().model_copy(update={"join_date": date(2025, 3, 1)}))
+    assert (junior["annual"].entitled, junior["medical"].entitled) == (8, 14)
+    new = rows(emp().model_copy(update={"join_date": date(2026, 4, 1)}))
+    assert new["annual"].entitled == 6  # 8 x 9/12 completed months
+
+    lv = [
+        LeaveRecord(employee_id="F1", leave_type=LeaveType.annual, start=date(2026, 9, 12), end=date(2026, 9, 16)),
+        LeaveRecord(employee_id="F1", leave_type=LeaveType.annual, start=date(2026, 3, 2), end=date(2026, 3, 2), half_day=True),
+        LeaveRecord(employee_id="F1", leave_type=LeaveType.medical, start=date(2026, 9, 21), end=date(2026, 9, 22)),
+        LeaveRecord(employee_id="F1", leave_type=LeaveType.unpaid, start=date(2026, 9, 23), end=date(2026, 9, 23)),
+    ]
+    r = rows(emp(), lv, [LeaveBalance(employee_id="F1", year=2026, leave_type=LeaveType.annual, carried_forward=Decimal(2))])
+    # 12 Sep (Sat) .. 16 Sep: Sun 13 is a rest day and 16 Sep a public holiday -> 3 working days
+    assert (r["annual"].taken_month, r["annual"].taken_ytd, r["annual"].balance) == (3, Decimal("3.5"), Decimal("14.5"))
+    assert r["medical"].balance == 20 and r["hospitalisation"].balance == 58  # 60 days include MC
+    assert r["unpaid"].taken_month == 1 and r["unpaid"].balance is None
+
+    from hr_agent.config import LeaveEntitlement
+    f = factory.model_copy(update={"leave_entitlements": {"annual": LeaveEntitlement(days=Decimal(20)),
+                                                          "medical": LeaveEntitlement(days=Decimal(5))}})
+    r = rows(emp(), f=f)
+    assert r["annual"].entitled == 20 and r["medical"].entitled == 22  # company less than the Act -> Act applies
+
+
+def test_payslip_language_modes(factory):
+    from hr_agent.payslip import render_payslip_html
+    e = emp(language="zh")
+    p, _ = payslip(factory, e)
+
+    def html(mode, employee=e):
+        return render_payslip_html(p, employee, factory.model_copy(update={"payslip_language_mode": mode}))
+
+    assert "Basic Salary / 基本工资" in html("en+employee")
+    en = html("en")
+    assert "Basic Salary" in en and "基本工资" not in en and "Gaji" not in en
+    ms = html("ms")
+    assert "Gaji Pokok" in ms and "Basic Salary" not in ms and "Muka 1 daripada 1" in ms
+    assert "Gaji Pokok / 基本工资" in html("ms+employee")
+    assert "Gaji Pokok / " not in html("ms+employee", emp(language="ms"))

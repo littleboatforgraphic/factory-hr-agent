@@ -6,8 +6,8 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from hr_agent.config import FactoryConfig
 from hr_agent.models import Employee, Payslip
-from hr_agent.money import ZERO, D
-from hr_agent.payslip.i18n import label
+from hr_agent.money import D
+from hr_agent.payslip.i18n import MONTHS, join_languages, label
 from hr_agent.periods import month_bounds, pay_date
 
 _env = Environment(loader=FileSystemLoader(Path(__file__).parent), autoescape=select_autoescape())
@@ -46,21 +46,36 @@ def build_rows(payslip: Payslip, L) -> list[dict]:  # noqa: N803
     return rows
 
 
+def payslip_languages(employee: Employee, factory: FactoryConfig) -> tuple[str, str | None]:
+    """(primary, secondary) from the company's payslip_language_mode and the employee's language."""
+    mode = factory.payslip_language_mode
+    primary = "ms" if mode.startswith("ms") else "en"
+    own = employee.language if employee.language in factory.payslip_languages else None
+    secondary = own if mode.endswith("+employee") and own != primary else None
+    return primary, secondary
+
+
+def _date(d, lang: str) -> str:
+    return f"{d.day:02d} {MONTHS.get(lang, MONTHS['en'])[d.month - 1]} {d.year}"
+
+
+def _days(v) -> str:
+    return "-" if v is None else f"{D(v).normalize():f}"
+
+
 def render_payslip_html(payslip: Payslip, employee: Employee, factory: FactoryConfig) -> str:
-    lang = employee.language if employee.language in factory.payslip_languages else "en"
+    primary, secondary = payslip_languages(employee, factory)
 
     def L(key: str, fallback: str | None = None) -> str:  # noqa: N802
         item = factory.pay_items.get(key.removesuffix("_FULL"))
         if item:
-            other = item.labels.get(lang)
-            return f"{item.name} / {other}" if other and lang != "en" else item.name
-        return label(key, lang, fallback)
+            return join_languages({"en": item.name, **item.labels}, item.name, primary, secondary)
+        return label(key, primary, secondary, fallback)
 
     days = [d for d in payslip.days if d.status != "not_employed"]
     att = {
         "working": sum(1 for d in days if d.day_type == "normal"),
         "present": sum(1 for d in days if d.status in ("present", "incomplete") and d.day_type == "normal"),
-        "leave": sum((d.leave_days for d in days), ZERO),
         "absent": sum(1 for d in days if d.status == "absent"),
     }
     start, end = month_bounds(payslip.period)
@@ -72,11 +87,14 @@ def render_payslip_html(payslip: Payslip, employee: Employee, factory: FactoryCo
         L=L, e=employee, p=payslip, employer=factory.employer,
         logo=factory.resolve(logo).as_uri() if logo else None,
         location=" / ".join(x for x in (employee.department, factory.state) if x),
-        period_range=f"{start:%d %b %Y} - {end:%d %b %Y}",
+        period_range=f"{_date(start, primary)} - {_date(end, primary)}",
         basic_salary=_fmt(salary), daily=_fmt(daily), hourly=f"{hourly:,.3f}",
-        net=_fmt(payslip.net), pay_date=pay_date(payslip.period, factory.calendar).strftime("%d %b %Y"),
+        net=_fmt(payslip.net), pay_date=_date(pay_date(payslip.period, factory.calendar), primary),
         att_range=f"{payslip.attendance_start:%d/%m}-{payslip.attendance_end:%d/%m/%Y}",
         rows=build_rows(payslip, L), att=att,
+        leave=[{"type": L("LV_" + r.leave_type.value), "entitled": _days(r.entitled), "cf": _days(r.carried_forward),
+                "month": _days(r.taken_month), "ytd": _days(r.taken_ytd), "balance": _days(r.balance)}
+               for r in payslip.leave],
     )
 
 

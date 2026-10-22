@@ -24,6 +24,11 @@ th { padding: 4px 8px; font-size: 7.5pt; }
 .gap td { height: 10px; }
 .credit { padding: 14px 8px 0; }
 .att { padding: 10px 8px 0; color: #444; }
+.lv { margin: 4px 8px 0; width: auto; color: #333; }
+.lv th, .lv td { padding: 1px 8px; border-bottom: 1px solid #ccc; }
+.lv th { text-align: right; border-bottom: 1px solid #111; }
+.lv th:first-child, .lv td:first-child { text-align: left; padding-left: 0; }
+.lv td { text-align: right; }
 .foot { padding: 14px 8px 0; color: #555; font-size: 7pt; }
 </style></head><body>
 <div class="logo">{% if logo %}<img src="{{ logo }}">{% else %}{{ employer.legal_name }}{% endif %}</div>
@@ -35,7 +40,7 @@ th { padding: 4px 8px; font-size: 7.5pt; }
     {{ e.id_no }}
   </div>
   <div class="box right">
-    Page 1 of 1<br>
+    {{ L('page_of') }}<br>
     {{ period_range }}<br>
     {{ L('basic_salary') }} : MYR <span class="kv">{{ basic_salary }}</span><br>
     {{ L('daily') }} : MYR <span class="kv">{{ daily }}</span><br>
@@ -53,7 +58,14 @@ th { padding: 4px 8px; font-size: 7.5pt; }
     {% endfor %}
   </table>
   <div class="credit">MYR {{ net }} {{ L('credited') }} {{ e.bank_account }} {{ L('on') }} {{ pay_date }}</div>
-  <div class="att">{{ L('attendance') }} {{ att_range }}: {{ L('working_days') }} {{ att.working }} | {{ L('present') }} {{ att.present }} | {{ L('leave') }} {{ att.leave }} | {{ L('absent') }} {{ att.absent }} | {{ L('ot_hours') }} {{ p.ot_hours_total }}</div>
+  <div class="att">{{ L('attendance') }} {{ att_range }}: {{ L('working_days') }} {{ att.working }} | {{ L('present') }} {{ att.present }} | {{ L('absent') }} {{ att.absent }} | {{ L('ot_hours') }} {{ p.ot_hours_total }}</div>
+  {% if leave %}
+  <table class="lv">
+    <tr><th>{{ L('leave') }}</th><th>{{ L('entitled') }}</th><th>{{ L('brought_forward') }}</th><th>{{ L('this_month') }}</th><th>{{ L('taken_ytd') }}</th><th>{{ L('balance') }}</th></tr>
+    {% for r in leave %}<tr><td>{{ r.type }}</td><td>{{ r.entitled }}</td><td>{{ r.cf }}</td><td>{{ r.month }}</td><td>{{ r.ytd }}</td><td>{{ r.balance }}</td></tr>
+    {% endfor %}
+  </table>
+  {% endif %}
   <div class="foot">{{ L('computer_generated') }}</div>
 </div>
 </body></html>

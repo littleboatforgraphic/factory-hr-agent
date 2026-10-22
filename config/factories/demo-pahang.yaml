@@ -52,6 +52,12 @@ unpaid_divisor: calendar_days
 day_boundary: "04:00"
 late_grace_minutes: 5
 minimum_wage_monthly: 1700
+# Leave entitlements per year. Employment Act minimums apply when not set or set lower: annual 8/12/16 and
+# medical 14/18/22 days by years of service (<2, 2-5, 5+), hospitalisation 60 (incl. MC), maternity 98, paternity 7.
+# Per-employee overrides and days brought forward go on the LeaveBalances sheet.
+leave_entitlements:
+  emergency: {days: 3}
+  compassionate: {days: 3}
 leave_paid:
   emergency: true
   compassionate: true
@@ -68,3 +74,4 @@ pay_items:
     hrd: true
 device_profiles: [zkteco_csv, zkteco_txt, generic_csv, generic_xlsx]
 payslip_languages: [en, ms, zh]
+payslip_language_mode: en+employee   # en | ms | en+employee | ms+employee

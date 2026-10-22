@@ -66,6 +66,11 @@ def main() -> None:
         {"employee_id": "F101", "leave_type": "medical", "start": date(2026, 9, 10), "end": date(2026, 9, 10), "approved_by": "HR"},
     ):
         wb["Leave"].append([lv.get(c) for c in MASTER_SHEETS["Leave"]])
+    for bal in (
+        {"employee_id": "E003", "year": 2026, "leave_type": "annual", "carried_forward": 3},
+        {"employee_id": "F101", "year": 2026, "leave_type": "replacement", "entitled": 1},
+    ):
+        wb["LeaveBalances"].append([bal.get(c) for c in MASTER_SHEETS["LeaveBalances"]])
     wb.save(store.master)
 
     out = ROOT / "sample_data" / "zkteco_2026-09.csv"

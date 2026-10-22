@@ -151,3 +151,5 @@ def test_ytd_accumulates_from_locked_runs(factory, store, seeded):
     assert s.ytd["EPF_EE"] == a.ytd["EPF_EE"] + next(ln.amount for ln in s.lines if ln.code == "EPF_EE")
     html = render_payslip_html(s, emp("L1", "3000", "local"), factory)
     assert "To Be Credited" in html and "YTD(MYR)" in html
+    assert [r.leave_type.value for r in s.leave][:3] == ["annual", "medical", "hospitalisation"]
+    assert "Taken YTD" in html and "Hospitalisation" in html

@@ -8,6 +8,7 @@ from datetime import date
 from hr_agent.models import (
     AttendanceOverride,
     Employee,
+    LeaveBalance,
     LeaveRecord,
     PayItemEntry,
     PayrollRun,
@@ -30,6 +31,9 @@ class Store(ABC):
 
     @abstractmethod
     def leave(self, start: date, end: date) -> list[LeaveRecord]: ...
+
+    @abstractmethod
+    def leave_balances(self, year: int) -> list[LeaveBalance]: ...
 
     @abstractmethod
     def overrides(self, start: date, end: date) -> list[AttendanceOverride]: ...

@@ -46,7 +46,7 @@ meters tokens per client for billing. Set `LLM_BASE_URL` to the gateway (e.g. `h
 
 ## Storage
 V1 is Excel only (`storage.backend: excel`): `master.xlsx` (HR-maintained employees, pay items, leave,
-attendance overrides), monthly punch files, one immutable workbook per payroll run version, and `audit_log.xlsx`.
+leave balances, attendance overrides), monthly punch files, one immutable workbook per payroll run version, and `audit_log.xlsx`.
 `sqlite` and `postgres` are placeholders behind the same `Store` interface.
 
 ## Pay items (allowances, incentives, benefits, PRS, deductions)
@@ -60,6 +60,18 @@ Each company defines its own pay items once; HR then enters only employee, item 
   `tp1_relief_annual_cap` (e.g. PRS RM3,000), `zakat` (reduces PCB), and `requires_approval`.
 - Benefits in kind are added to PCB remuneration only; they are not paid and not shown on the payslip.
 - Flags: unknown item code (error), unapproved item (warning, excluded), non-statutory deductions over 50% of wages.
+
+## Payslip language and leave table
+- `payslip_language_mode`: `en`, `ms`, `en+employee` or `ms+employee` (adds the employee's `language` when it is
+  listed in `payslip_languages`).
+- Below the attendance line (working days, present, absent, OT hours) the payslip has a leave table: entitled,
+  brought forward, taken this month, taken this year, balance. Annual, medical and hospitalisation always show;
+  other types show when used, set on the `LeaveBalances` sheet, or configured in `leave_entitlements`.
+- Entitlements: `leave_entitlements` in the factory file, never below the Employment Act minimums (annual 8/12/16 and
+  medical 14/18/22 days for <2 / 2-5 / 5+ years of service, annual prorated in the first year; hospitalisation 60
+  incl. MC; maternity 98 calendar days; paternity 7). `LeaveBalances` rows (employee, year, leave_type, entitled,
+  carried_forward) set per-employee entitlements and days brought forward. Leave days exclude rest days and
+  public holidays (maternity counts calendar days).
 
 ## Rules implemented
 - Normal hours from schedule segments (default 08:00-12:00, 13:00-17:00 Mon-Fri; 08:00-13:00 Sat); schedules over

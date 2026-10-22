@@ -1,7 +1,7 @@
 """Excel-only storage (V1). Each factory's data lives in workbooks on its own server.
 
 Layout under the storage root:
-  master.xlsx                      Employees, PayItems, Leave, Overrides (HR-maintained)
+  master.xlsx                      Employees, PayItems, Leave, LeaveBalances, Overrides (HR-maintained)
   attendance/punches_YYYY-MM.xlsx  imported punches, one file per month
   payroll/YYYY-MM/run_vN.xlsx      one immutable file per payroll run version
   audit_log.xlsx                   append-only audit trail
@@ -20,6 +20,7 @@ from openpyxl import Workbook, load_workbook
 from hr_agent.models import (
     AttendanceOverride,
     Employee,
+    LeaveBalance,
     LeaveRecord,
     PayItemEntry,
     PayrollRun,
@@ -33,6 +34,7 @@ MASTER_SHEETS: dict[str, list[str]] = {
     "Employees": list(Employee.model_fields),
     "PayItems": list(PayItemEntry.model_fields),
     "Leave": list(LeaveRecord.model_fields),
+    "LeaveBalances": list(LeaveBalance.model_fields),
     "Overrides": list(AttendanceOverride.model_fields),
 }
 _BOOL = {"y": True, "yes": True, "true": True, "1": True, "n": False, "no": False, "false": False, "0": False}
@@ -140,6 +142,10 @@ class ExcelStore(Store):
     def leave(self, start: date, end: date) -> list[LeaveRecord]:
         recs = [LeaveRecord.model_validate(_as_text_ids(r, "employee_id")) for r in _read_sheet(self.master, "Leave")]
         return [r for r in recs if r.start <= end and r.end >= start]
+
+    def leave_balances(self, year: int) -> list[LeaveBalance]:
+        recs = [LeaveBalance.model_validate(_as_text_ids(r, "employee_id")) for r in _read_sheet(self.master, "LeaveBalances")]
+        return [r for r in recs if r.year == year]
 
     def overrides(self, start: date, end: date) -> list[AttendanceOverride]:
         recs = [AttendanceOverride.model_validate(_as_text_ids(r, "employee_id")) for r in _read_sheet(self.master, "Overrides")]

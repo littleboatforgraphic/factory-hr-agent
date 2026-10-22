@@ -92,6 +92,25 @@ class LeaveRecord(BaseModel):
     approved_by: str = ""
 
 
+class LeaveBalance(BaseModel):
+    """Optional per-employee leave settings for a year: entitlement override and days brought forward."""
+
+    employee_id: str
+    year: int
+    leave_type: LeaveType
+    entitled: Decimal | None = None
+    carried_forward: Decimal = ZERO
+
+
+class LeaveSummaryRow(BaseModel):
+    leave_type: LeaveType
+    entitled: Decimal | None = None
+    carried_forward: Decimal = ZERO
+    taken_month: Decimal = ZERO
+    taken_ytd: Decimal = ZERO
+    balance: Decimal | None = None
+
+
 class Punch(BaseModel):
     employee_id: str
     timestamp: datetime
@@ -176,6 +195,7 @@ class Payslip(BaseModel):
     tax: TaxInfo
     ytd: dict[str, Decimal] = Field(default_factory=dict)
     days: list[DayResult] = Field(default_factory=list)
+    leave: list[LeaveSummaryRow] = Field(default_factory=list)
 
 
 RunStatus = Literal["draft", "reviewed", "approved", "locked"]

@@ -158,6 +158,33 @@ class PayItem(BaseModel):
         return self
 
 
+class LeaveEntitlement(BaseModel):
+    """Days per year, either flat or by completed years of service ([[min_years, days], ...])."""
+
+    days: Decimal | None = None
+    by_service_years: list[tuple[int, Decimal]] | None = None
+    count: Literal["working_days", "calendar_days"] = "working_days"
+    prorate_first_year: bool = False
+
+    def days_for(self, service_years: int) -> Decimal | None:
+        if self.by_service_years:
+            eligible = [d for years, d in sorted(self.by_service_years) if service_years >= years]
+            return eligible[-1] if eligible else ZERO
+        return self.days
+
+
+# Employment Act 1955 minimums: s.60E annual leave, s.60F sick and hospitalisation leave, s.37 maternity
+# (98 days), s.60FA paternity (7 days). A company may give more, never less.
+EA_LEAVE_MINIMUMS: dict[str, LeaveEntitlement] = {
+    "annual": LeaveEntitlement(by_service_years=[(0, Decimal(8)), (2, Decimal(12)), (5, Decimal(16))],
+                               prorate_first_year=True),
+    "medical": LeaveEntitlement(by_service_years=[(0, Decimal(14)), (2, Decimal(18)), (5, Decimal(22))]),
+    "hospitalisation": LeaveEntitlement(days=Decimal(60)),
+    "maternity": LeaveEntitlement(days=Decimal(98), count="calendar_days"),
+    "paternity": LeaveEntitlement(days=Decimal(7)),
+}
+
+
 class Employer(BaseModel):
     legal_name: str
     registration_no: str = ""
@@ -187,10 +214,13 @@ class FactoryConfig(BaseModel):
     late_grace_minutes: int = 0
     minimum_wage_monthly: Decimal = Decimal("1700")
     leave_paid: dict[str, bool] = Field(default_factory=dict)
+    leave_entitlements: dict[str, LeaveEntitlement] = Field(default_factory=dict)
     pay_items_file: str | None = None
     pay_items: dict[str, PayItem] = Field(default_factory=dict)
     device_profiles: list[str] = Field(default_factory=lambda: ["generic_csv"])
     payslip_languages: list[str] = Field(default_factory=lambda: ["en"])
+    # en / ms only, or en / ms plus the employee's own language (if listed in payslip_languages).
+    payslip_language_mode: Literal["en", "ms", "en+employee", "ms+employee"] = "en+employee"
     base_dir: Path = Path(".")
 
     @field_validator("country")

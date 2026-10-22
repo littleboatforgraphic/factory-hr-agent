@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 from collections import Counter, defaultdict
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 
 from hr_agent.attendance import process_employee_attendance
 from hr_agent.config import FactoryConfig
 from hr_agent.devices import load_profile, parse_export
 from hr_agent.holidays import load_holidays
+from hr_agent.leave import summarise_leave
 from hr_agent.models import Flag, PayrollRun, Payslip, Punch, RunStatus
 from hr_agent.money import ZERO
 from hr_agent.payroll import YearToDate, compute_payslip
@@ -100,7 +101,9 @@ def run_payroll(factory: FactoryConfig, store: Store, period: str, user: str) ->
     punches_by_emp: dict[str, list[Punch]] = defaultdict(list)
     for p in store.punches(*punch_window(att_start, att_end)):
         punches_by_emp[p.employee_id].append(p)
-    leave = store.leave(att_start, att_end)
+    year = parse_period(period)[0]
+    leave = store.leave(min(date(year, 1, 1), att_start), att_end)
+    balances = store.leave_balances(year)
     overrides = store.overrides(att_start, att_end)
     pay_items = store.pay_items()
     ytd, ytd_lines = _year_to_date(store, period)
@@ -121,6 +124,11 @@ def run_payroll(factory: FactoryConfig, store: Store, period: str, user: str) ->
         totals = _line_totals(payslip)
         totals.update(ytd_lines.get(eid, Counter()))
         payslip.ytd = dict(totals)
+        payslip.leave = summarise_leave(
+            employee=emp, factory=factory, records=[rec for rec in leave if rec.employee_id == eid],
+            balances=[b for b in balances if b.employee_id == eid], holidays=calendar.dates(), year=year,
+            month_start=att_start, as_of=att_end,
+        )
         payslips.append(payslip)
         flags.extend(f1 + f2)
 
