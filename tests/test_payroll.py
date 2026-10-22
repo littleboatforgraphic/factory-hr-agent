@@ -4,7 +4,7 @@ from decimal import Decimal
 from conftest import emp, punches
 
 from hr_agent.attendance import process_employee_attendance
-from hr_agent.models import Bonus, LeaveRecord, LeaveType
+from hr_agent.models import LeaveRecord, LeaveType, PayItemEntry
 from hr_agent.money import ZERO
 from hr_agent.payroll import YearToDate, compute_payslip, public_holiday_pay, rest_day_pay
 from hr_agent.statutory.my import MalaysiaStatutory
@@ -25,12 +25,16 @@ def full_month(eid, skip=()):
     return punches(eid, *pairs)
 
 
-def payslip(factory, employee, leave=(), bonuses=(), skip=()):
+def payslip(factory, employee, leave=(), items=(), skip=(), ytd=None):
     start, end = date(2026, 9, 1), date(2026, 9, 30)
     ps = full_month(employee.employee_id, skip)
     days, _ = process_employee_attendance(employee, factory, ps, [], list(leave), set(), start, end)
     return compute_payslip(employee=employee, factory=factory, period="2026-09", days=days, attendance_start=start,
-                           attendance_end=end, allowances=[], bonuses=list(bonuses), ytd=YearToDate(), statutory=statutory(factory))
+                           attendance_end=end, pay_items=list(items), ytd=ytd or YearToDate(), statutory=statutory(factory))
+
+
+def item(eid, code, amount, **kw):
+    return PayItemEntry(employee_id=eid, item=code, amount=Decimal(amount), **kw)
 
 
 def line(p, code):
@@ -56,10 +60,14 @@ def test_public_holiday_minimum_is_two_days_wages():
     assert amount == Decimal("200") and "Employment Act" in basis
 
 
-def test_unapproved_bonus_excluded_and_flagged(factory):
-    p, flags = payslip(factory, emp(), bonuses=[Bonus(employee_id="F1", period="2026-09", name="Incentive", amount=Decimal("100"))])
-    assert not [ln for ln in p.lines if ln.code == "BONUS"]
-    assert "bonus_not_approved" in {f.code for f in flags}
+def test_unapproved_incentive_excluded_and_flagged(factory):
+    p, flags = payslip(factory, emp(), items=[item("F1", "INCENTIVE", "100", period="2026-09")])
+    assert not [ln for ln in p.lines if ln.code == "INCENTIVE"]
+    assert "pay_item_not_approved" in {f.code for f in flags}
+    p, _ = payslip(factory, emp(), items=[item("F1", "INCENTIVE", "100", period="2026-09", approved_by="GM")])
+    assert line(p, "INCENTIVE") == 100 and p.tax.additional_taxable == 100
+    p, _ = payslip(factory, emp(), items=[item("F1", "INCENTIVE", "100", period="2026-10", approved_by="GM")])
+    assert not [ln for ln in p.lines if ln.code == "INCENTIVE"]
 
 
 def test_foreign_worker_epf_and_no_eis(factory):
@@ -169,3 +177,82 @@ def test_pcb_below_ten_ringgit_not_deducted(factory):
     c = s.pcb(month=1, resident=True, married_nonworking_spouse=False, children=0, ytd_taxable=ZERO, ytd_epf=ZERO,
               ytd_pcb=ZERO, current_taxable=Decimal("3000"), current_epf=Decimal("330"))
     assert c.employee == 0 and "not deducted" in c.trace
+
+
+def with_items(factory, **items):
+    from hr_agent.config import PayItem
+    return factory.model_copy(update={"pay_items": {**factory.pay_items, **{k: PayItem(**v) for k, v in items.items()}}})
+
+
+def test_pay_item_switches_drive_each_statutory_wage(factory):
+    f = with_items(factory, X_ALW={"name": "SOCSO-only allowance", "socso": True, "tax": "exempt"})
+    p, _ = payslip(f, emp("L1", "3000", "local"), items=[item("L1", "X_ALW", "200")])
+    assert p.gross == 3200 and p.epf_wage == 3000 and p.socso_wage == 3200
+    assert p.tax.normal_taxable == 3000 and p.tax.tax_exempt == 200  # tax switch respected
+    assert line(p, "EIS_EE") == statutory(f).eis(Decimal("3000"), "local", 30).employee  # EIS switch respected
+    assert line(p, "HRD") == Decimal("30.00")
+
+
+def test_tax_exempt_annual_limit_taxes_the_excess(factory):
+    ytd = YearToDate(items={"TRAVEL_ALW": Decimal("5800")})
+    p, _ = payslip(factory, emp("L1", "3000", "local"), items=[item("L1", "TRAVEL_ALW", "500")], ytd=ytd)
+    assert p.tax.tax_exempt == 200 and p.tax.normal_taxable == 3300
+    assert p.epf_wage == 3000 and p.socso_wage == 3000
+
+
+def test_benefit_in_kind_is_taxed_but_not_paid(factory):
+    from hr_agent.payslip import render_payslip_html
+    e = emp("L1", "3000", "local")
+    p, _ = payslip(factory, e, items=[item("L1", "VOLA", "500")])
+    assert p.gross == 3000 and p.tax.normal_taxable == 3500 and p.tax.benefits_in_kind == 500
+    assert p.net == p.gross - p.total_deductions
+    assert "Living accommodation" not in render_payslip_html(p, e, factory)
+
+
+def test_prs_employer_and_employee_with_tp1_cap(factory):
+    ytd = YearToDate(items={"PRS_EE": Decimal("2900")})
+    p, _ = payslip(factory, emp("L1", "6000", "local"),
+                   items=[item("L1", "PRS_ER", "300"), item("L1", "PRS_EE", "200")], ytd=ytd)
+    assert line(p, "PRS_ER") == 300 and p.employer_cost > p.gross + 300
+    assert p.tax.normal_taxable == 6000 and p.tax.tp1_deductions == 100
+    assert line(p, "PRS_EE") == 200 and p.net == p.gross - p.total_deductions
+
+
+def test_zakat_reduces_pcb(factory):
+    e = emp("L1", "8000", "local")
+    ytd = YearToDate(normal_taxable=Decimal("64000"), epf_employee=Decimal("3520"))
+    base, _ = payslip(factory, e, ytd=ytd)
+    p, _ = payslip(factory, e, items=[item("L1", "ZAKAT", "50")], ytd=ytd)
+    assert line(p, "ZAKAT") == 50 and line(p, "PCB") == line(base, "PCB") - 50 and p.tax.zakat == 50
+    s = statutory(factory)
+    kw = dict(month=5, resident=True, married_nonworking_spouse=False, children=0, ytd_taxable=Decimal("32000"),
+              ytd_epf=Decimal("3520"), current_taxable=Decimal("8000"), current_epf=Decimal("880"))
+    assert s.pcb(ytd_pcb=Decimal("1000"), ytd_zakat=Decimal("200"), **kw).employee == \
+        s.pcb(ytd_pcb=Decimal("1200"), **kw).employee  # Z and X both reduce the remaining tax
+    assert s.pcb(ytd_pcb=ZERO, current_zakat=Decimal("100000"), **kw).employee == 0
+
+
+def test_unknown_item_blocks_and_large_deductions_warn(factory):
+    _, flags = payslip(factory, emp(), items=[item("F1", "NOPE", "10")])
+    assert {"unknown_pay_item"} <= {f.code for f in flags if f.severity == "error"}
+    _, flags = payslip(factory, emp(), items=[item("F1", "ADVANCE", "900")])
+    assert "deductions_over_half" in {f.code for f in flags}
+
+
+def test_factory_overrides_and_removes_default_items(tmp_path):
+    import pytest
+    import yaml
+    from conftest import ROOT
+
+    from hr_agent.config import load_factory
+    data = yaml.safe_load((ROOT / "config/factories/demo-pahang.yaml").read_text())
+    data["pay_items"] = {"TRAVEL_ALW": None, "MEAL_ALW": {"tax": "exempt"}, "NIGHT_ALW": {"name": "Night allowance", "epf": True}}
+    cfg = tmp_path / "f.yaml"
+    cfg.write_text(yaml.safe_dump(data))
+    f = load_factory(cfg, base_dir=ROOT)
+    assert "TRAVEL_ALW" not in f.pay_items and f.pay_items["MEAL_ALW"].tax == "exempt"
+    assert f.pay_items["MEAL_ALW"].epf and f.pay_items["NIGHT_ALW"].epf
+    data["pay_items"] = {"PCB": {"name": "clash"}}
+    cfg.write_text(yaml.safe_dump(data))
+    with pytest.raises(ValueError, match="reserved"):
+        load_factory(cfg, base_dir=ROOT)

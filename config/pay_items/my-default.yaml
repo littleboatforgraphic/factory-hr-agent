@@ -1,0 +1,110 @@
+# Default pay items for Malaysian factories. A factory file can override any field of these, add its own
+# items, or remove one (CODE: null) under `pay_items:`. HR then enters only employee, item code and amount
+# on the PayItems sheet of master.xlsx.
+#
+# type:   earning | benefit_in_kind (non-cash, PCB only) | employer_contribution | deduction
+# epf / socso / eis / hrd: the earning counts as wages for that contribution / levy
+# tax:    normal (monthly remuneration) | additional (LHDN additional remuneration, e.g. bonus) | exempt
+# tax_exempt_annual_limit: exempt up to this amount per year, excess taxed as normal remuneration
+#         (LHDN 2026 MTD spec, list of tax-exempt allowances; reported in EA Part F)
+# tp1_relief_annual_cap: employee deduction that is also a TP1 relief for PCB, capped per year
+# zakat:  deduction is zakat; reduces PCB for the month (LHDN 2026 MTD spec)
+# requires_approval: entry is excluded until approved_by is filled (management approval, or for
+#         deductions the employee's written consent reference)
+#
+# These defaults are a starting point and must be confirmed with the company's accountant.
+FIXED_ALW:
+  name: Fixed allowance
+  labels: {ms: Elaun tetap, zh: 固定津贴}
+  epf: true
+  socso: true
+  eis: true
+  hrd: true
+SHIFT_ALW:
+  name: Shift allowance
+  labels: {ms: Elaun syif, zh: 轮班津贴}
+  epf: true
+  socso: true
+  eis: true
+ATTEND_ALW:
+  name: Attendance allowance
+  labels: {ms: Elaun kehadiran, zh: 全勤津贴}
+  epf: true
+  socso: true
+  eis: true
+MEAL_ALW:
+  name: Meal allowance
+  labels: {ms: Elaun makan, zh: 餐费津贴}
+  epf: true
+  socso: true
+  eis: true
+  note: Tax exempt only if paid regularly at the same rate to all employees; set tax to exempt if so.
+TRAVEL_ALW:
+  name: Travel / petrol / toll allowance (official duties)
+  labels: {ms: Elaun perjalanan, zh: 交通津贴}
+  tax: exempt
+  tax_exempt_annual_limit: 6000
+CHILDCARE_ALW:
+  name: Childcare allowance
+  labels: {ms: Elaun penjagaan anak, zh: 托儿津贴}
+  epf: true
+  socso: true
+  eis: true
+  tax: exempt
+  tax_exempt_annual_limit: 3000
+INCENTIVE:
+  name: Production incentive
+  labels: {ms: Insentif pengeluaran, zh: 生产奖励}
+  epf: true
+  socso: true
+  eis: true
+  tax: additional
+  requires_approval: true
+BONUS:
+  name: Bonus
+  labels: {ms: Bonus, zh: 奖金}
+  epf: true
+  tax: additional
+  requires_approval: true
+BIK:
+  name: Benefit in kind
+  labels: {ms: Manfaat berupa barangan, zh: 实物福利}
+  type: benefit_in_kind
+VOLA:
+  name: Living accommodation (VOLA)
+  labels: {ms: Tempat kediaman, zh: 住宿福利}
+  type: benefit_in_kind
+PRS_ER:
+  name: Employer PRS contribution
+  labels: {ms: Caruman PRS majikan, zh: 雇主私人退休计划供款}
+  type: employer_contribution
+  tax: exempt
+PRS_EE:
+  name: PRS contribution
+  labels: {ms: Caruman PRS, zh: 私人退休计划供款}
+  type: deduction
+  tp1_relief_annual_cap: 3000
+ZAKAT:
+  name: Zakat
+  labels: {ms: Zakat, zh: 天课}
+  type: deduction
+  zakat: true
+ADVANCE:
+  name: Salary advance recovery
+  labels: {ms: Potongan pendahuluan gaji, zh: 预支工资扣回}
+  type: deduction
+LOAN:
+  name: Loan repayment
+  labels: {ms: Bayaran balik pinjaman, zh: 贷款还款}
+  type: deduction
+  requires_approval: true
+HOSTEL:
+  name: Hostel charge
+  labels: {ms: Caj asrama, zh: 宿舍费}
+  type: deduction
+  requires_approval: true
+CANTEEN:
+  name: Canteen charge
+  labels: {ms: Caj kantin, zh: 食堂费}
+  type: deduction
+  requires_approval: true

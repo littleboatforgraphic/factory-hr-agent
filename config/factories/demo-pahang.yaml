@@ -55,5 +55,16 @@ minimum_wage_monthly: 1700
 leave_paid:
   emergency: true
   compassionate: true
+# Allowances, incentives, benefits, PRS and deductions this company uses. Defaults come from
+# pay_items_file; add or override items here (CODE: null removes a default).
+pay_items_file: config/pay_items/my-default.yaml
+pay_items:
+  SKILL_ALW:
+    name: Skill allowance
+    labels: {ms: Elaun kemahiran, zh: 技能津贴}
+    epf: true
+    socso: true
+    eis: true
+    hrd: true
 device_profiles: [zkteco_csv, zkteco_txt, generic_csv, generic_xlsx]
 payslip_languages: [en, ms, zh]

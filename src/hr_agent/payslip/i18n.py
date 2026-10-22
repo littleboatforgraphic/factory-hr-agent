@@ -44,7 +44,6 @@ LABELS: dict[str, dict[str, str]] = {
     "OT_NORMAL": {"en": "Overtime 1.5x", "ms": "Lebih masa 1.5x", "zh": "加班 1.5倍"},
     "OT_REST": {"en": "Rest day work", "ms": "Kerja hari rehat", "zh": "休息日工作"},
     "OT_PH": {"en": "Public holiday work", "ms": "Kerja cuti umum", "zh": "公共假期工作"},
-    "BONUS": {"en": "Bonus / incentive", "ms": "Bonus / insentif", "zh": "奖金/奖励"},
     "PCB": {"en": "Income tax (PCB)", "ms": "Cukai pendapatan (PCB)", "zh": "所得税 (PCB)"},
     "EPF_ER": {"en": "EPF", "ms": "KWSP", "zh": "公积金"},
     "SOCSO_ER": {"en": "SOCSO", "ms": "PERKESO", "zh": "社险"},

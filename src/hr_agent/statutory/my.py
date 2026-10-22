@@ -205,10 +205,13 @@ class MalaysiaStatutory:
         additional_epf: Decimal = ZERO,
         ytd_deductions: Decimal = ZERO,
         current_deductions: Decimal = ZERO,
+        ytd_zakat: Decimal = ZERO,
+        current_zakat: Decimal = ZERO,
     ) -> Contribution:
         """MTD = [(P - M) R + B - (Z + X)] / (n + 1); figures truncated to 2 decimals, MTD rounded up to 5 sen.
 
         ytd_deductions / current_deductions are the TP1 allowable deductions (sum LP, LP1).
+        ytd_zakat is Z (zakat paid in earlier months); current_zakat is deducted from this month's MTD.
         """
         p = self.cfg["pcb"]
         minimum = D(p["minimum_deduction"])
@@ -231,10 +234,12 @@ class MalaysiaStatutory:
         k2_normal = k2(ZERO)
         p_normal = trunc_cents(net_to_date + (current_taxable - k2_normal) * n - reliefs)
         annual = self._annual_tax(p_normal, married_nonworking_spouse)
-        normal = ceil_5sen(max(trunc_cents((annual - ytd_pcb) / (n + 1)), ZERO))
+        normal = ceil_5sen(max(trunc_cents((annual - (ytd_zakat + ytd_pcb)) / (n + 1)), ZERO))
         trace = (
             f"PCB: K2 RM{k2_normal}, P = RM{p_normal} ({n} months remaining, reliefs RM{reliefs}); "
-            f"annual tax RM{annual}; less MTD paid RM{round_cents(ytd_pcb)}, / {n + 1} = RM{normal}"
+            f"annual tax RM{annual}; less MTD paid RM{round_cents(ytd_pcb)}"
+            + (f" and zakat paid RM{round_cents(ytd_zakat)}" if ytd_zakat else "")
+            + f", / {n + 1} = RM{normal}"
         )
         if normal < minimum:
             trace += f" (below RM{minimum}: not deducted)"
@@ -248,7 +253,7 @@ class MalaysiaStatutory:
             k2_ar = k2(kt)
             p_ar = trunc_cents(net_to_date + (current_taxable - k2_ar) * n + (additional_taxable - kt) - reliefs)
             annual_ar = self._annual_tax(p_ar, married_nonworking_spouse)
-            year_mtd = ytd_pcb + normal * (n + 1)
+            year_mtd = ytd_pcb + normal * (n + 1) + ytd_zakat
             ar = ceil_5sen(max(annual_ar - year_mtd, ZERO))
             trace += (
                 f"; additional remuneration RM{round_cents(additional_taxable)} (Kt RM{kt}, K2 RM{k2_ar}): "
@@ -258,4 +263,7 @@ class MalaysiaStatutory:
                 trace += f" (below RM{minimum}: not deducted)"
                 ar = ZERO
         total = normal_paid + ar
+        if current_zakat:
+            total = max(total - current_zakat, ZERO)
+            trace += f"; less zakat this month RM{round_cents(current_zakat)}"
         return Contribution(total, ZERO, trace + f"; PCB = RM{total}")

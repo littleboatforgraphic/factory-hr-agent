@@ -65,28 +65,22 @@ class Employee(BaseModel):
         return self.device_user_id or self.employee_id
 
 
-class Allowance(BaseModel):
+class PayItemEntry(BaseModel):
+    """One row of the PayItems sheet: an amount of a company pay item for one employee."""
+
     employee_id: str
-    name: str
+    item: str
     amount: Decimal
-    epf: bool = True
-    socso: bool = True
-    eis: bool = True
-    taxable: bool = True
+    period: str | None = None  # YYYY-MM for a one-off amount; blank = recurring between start and end
     start: dt.date | None = None
     end: dt.date | None = None
-
-    def active_in(self, start: dt.date, end: dt.date) -> bool:
-        return (self.start is None or self.start <= end) and (self.end is None or self.end >= start)
-
-
-class Bonus(BaseModel):
-    employee_id: str
-    period: str
-    name: str = "Bonus"
-    amount: Decimal
-    epf: bool = True
     approved_by: str = ""
+    note: str = ""
+
+    def applies_to(self, period: str, start: dt.date, end: dt.date) -> bool:
+        if self.period:
+            return self.period == period
+        return (self.start is None or self.start <= end) and (self.end is None or self.end >= start)
 
 
 class LeaveRecord(BaseModel):
@@ -126,7 +120,7 @@ class Flag(BaseModel):
 
 
 class Line(BaseModel):
-    kind: Literal["earning", "deduction", "employer"]
+    kind: Literal["earning", "deduction", "employer", "benefit"]
     code: str
     label: str
     amount: Decimal
@@ -159,6 +153,10 @@ class TaxInfo(BaseModel):
     epf_employee_normal: Decimal = ZERO
     epf_employee_additional: Decimal = ZERO
     pcb: Decimal = ZERO
+    tax_exempt: Decimal = ZERO  # EA Part F
+    benefits_in_kind: Decimal = ZERO
+    tp1_deductions: Decimal = ZERO
+    zakat: Decimal = ZERO
 
 
 class Payslip(BaseModel):

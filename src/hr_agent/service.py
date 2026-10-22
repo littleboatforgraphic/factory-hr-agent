@@ -63,6 +63,10 @@ def _year_to_date(store: Store, period: str) -> tuple[dict[str, YearToDate], dic
             y.normal_taxable += p.tax.normal_taxable + p.tax.additional_taxable
             y.epf_employee += p.tax.epf_employee_normal + p.tax.epf_employee_additional
             y.pcb += p.tax.pcb
+            y.tp1_deductions += p.tax.tp1_deductions
+            y.zakat += p.tax.zakat
+    for eid, totals in lines.items():
+        ytd[eid].items = dict(totals)
     return ytd, lines
 
 
@@ -98,8 +102,7 @@ def run_payroll(factory: FactoryConfig, store: Store, period: str, user: str) ->
         punches_by_emp[p.employee_id].append(p)
     leave = store.leave(att_start, att_end)
     overrides = store.overrides(att_start, att_end)
-    allowances = store.allowances()
-    bonuses = store.bonuses(period)
+    pay_items = store.pay_items()
     ytd, ytd_lines = _year_to_date(store, period)
 
     payslips = []
@@ -112,8 +115,7 @@ def run_payroll(factory: FactoryConfig, store: Store, period: str, user: str) ->
         payslip, f2 = compute_payslip(
             employee=emp, factory=factory, period=period, days=days,
             attendance_start=att_start, attendance_end=att_end,
-            allowances=[a for a in allowances if a.employee_id == eid],
-            bonuses=[b for b in bonuses if b.employee_id == eid],
+            pay_items=[i for i in pay_items if i.employee_id == eid],
             ytd=ytd.get(eid, YearToDate()), statutory=statutory,
         )
         totals = _line_totals(payslip)

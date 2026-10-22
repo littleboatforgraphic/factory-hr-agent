@@ -50,6 +50,10 @@ def render_payslip_html(payslip: Payslip, employee: Employee, factory: FactoryCo
     lang = employee.language if employee.language in factory.payslip_languages else "en"
 
     def L(key: str, fallback: str | None = None) -> str:  # noqa: N802
+        item = factory.pay_items.get(key.removesuffix("_FULL"))
+        if item:
+            other = item.labels.get(lang)
+            return f"{item.name} / {other}" if other and lang != "en" else item.name
         return label(key, lang, fallback)
 
     days = [d for d in payslip.days if d.status != "not_employed"]

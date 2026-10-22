@@ -52,13 +52,14 @@ def main() -> None:
             children=kids, language=lang, permit_expiry=date(2026, 10, 20) if eid == "F104" else None,
         )
         ws.append([row.get(c) for c in cols])
-    wb["Allowances"].append([{"employee_id": "E001", "name": "Position allowance", "amount": 300, "epf": "Y", "socso": "Y", "eis": "Y", "taxable": "Y"}.get(c) for c in MASTER_SHEETS["Allowances"]])
-    wb["Allowances"].append([{"employee_id": "F105", "name": "Skill allowance", "amount": 100, "epf": "Y", "socso": "Y", "eis": "Y", "taxable": "Y"}.get(c) for c in MASTER_SHEETS["Allowances"]])
-    for b in (
-        {"employee_id": "F103", "period": "2026-09", "name": "Production incentive", "amount": 150, "epf": "Y", "approved_by": "GM Lim"},
-        {"employee_id": "F106", "period": "2026-09", "name": "Production incentive", "amount": 100, "epf": "Y"},
+    for item in (
+        {"employee_id": "E001", "item": "FIXED_ALW", "amount": 300, "note": "Position allowance"},
+        {"employee_id": "F105", "item": "SKILL_ALW", "amount": 100},
+        {"employee_id": "F103", "item": "INCENTIVE", "period": "2026-09", "amount": 150, "approved_by": "GM Lim"},
+        {"employee_id": "F106", "item": "INCENTIVE", "period": "2026-09", "amount": 100},
+        {"employee_id": "F101", "item": "HOSTEL", "amount": 50, "approved_by": "Consent form 2026-01"},
     ):
-        wb["Bonuses"].append([b.get(c) for c in MASTER_SHEETS["Bonuses"]])
+        wb["PayItems"].append([item.get(c) for c in MASTER_SHEETS["PayItems"]])
     for lv in (
         {"employee_id": "E003", "leave_type": "annual", "start": date(2026, 9, 7), "end": date(2026, 9, 8), "approved_by": "HR"},
         {"employee_id": "F102", "leave_type": "unpaid", "start": date(2026, 9, 21), "end": date(2026, 9, 22), "approved_by": "HR"},

@@ -45,3 +45,20 @@ def test_employee_master_reads_back(store):
     wb.save(store.master)
     (got,) = store.employees()
     assert got.employee_id == "E9" and got.spouse_working is False and str(got.monthly_salary) == "1700"
+
+
+def test_pay_items_sheet_reads_back(store):
+    from datetime import datetime
+
+    from openpyxl import load_workbook
+
+    from hr_agent.storage.excel import MASTER_SHEETS
+    wb = load_workbook(store.master)
+    rows = [{"employee_id": 101, "item": "incentive", "amount": 150, "period": datetime(2026, 9, 1), "approved_by": "GM"},
+            {"employee_id": "101", "item": "FIXED_ALW", "amount": 300}]
+    for r in rows:
+        wb["PayItems"].append([r.get(c) for c in MASTER_SHEETS["PayItems"]])
+    wb.save(store.master)
+    a, b = store.pay_items()
+    assert (a.employee_id, a.item, a.period, a.approved_by) == ("101", "INCENTIVE", "2026-09", "GM")
+    assert b.period is None and b.applies_to("2026-10", date(2026, 10, 1), date(2026, 10, 31))
