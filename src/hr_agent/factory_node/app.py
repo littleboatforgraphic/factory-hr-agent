@@ -30,6 +30,12 @@ class Caller(BaseModel):
     employee_id: str | None = None
 
 
+class LinkRequest(BaseModel):
+    channel: str = "telegram"
+    chat_id: str
+    phone: str
+
+
 STAFF = {"hr", "accountant", "management"}
 READERS = STAFF | {"agent"}
 
@@ -115,15 +121,33 @@ def create_app(factory: FactoryConfig, store: Store, tokens: dict[str, dict]) ->
             raise HTTPException(400, str(e)) from e
         return saved.model_dump(mode="json")
 
+    @app.get("/directory/employee")
+    def find_employee(telegram_id: str = "", phone: str = "", c: Caller = Depends(require({"agent"}))):
+        """Lets the cloud agent recognise an employee chatting; returns only the id and language."""
+        e = service.find_employee(store, telegram_id=telegram_id, phone=phone)
+        if e is None:
+            raise HTTPException(404, "Not a current employee")
+        return {"employee_id": e.employee_id, "language": e.language}
+
+    @app.post("/directory/link")
+    def link(req: LinkRequest, c: Caller = Depends(require({"agent"}))):
+        if req.channel != "telegram":
+            raise HTTPException(400, "Only Telegram accounts are linked; WhatsApp uses the phone number")
+        e = service.link_chat(store, req.channel, req.chat_id, req.phone, c.user)
+        if e is None:
+            raise HTTPException(404, "Phone number does not match a current employee")
+        return {"employee_id": e.employee_id, "language": e.language}
+
     @app.get("/runs/{period}/payslips/{employee_id}")
-    def payslip(period: str, employee_id: str, version: int | None = None, c: Caller = Depends(caller)):
+    def payslip(period: str, employee_id: str, version: int | None = None, released_only: bool = False,
+                c: Caller = Depends(caller)):
         if c.role == "employee":
             if c.employee_id != employee_id:
                 raise HTTPException(403, "Employees can only view their own payslip")
         elif c.role not in READERS:
             raise HTTPException(403, "Not allowed")
         run = get_run(period, version)
-        if c.role == "employee" and run.status != "locked":
+        if (c.role == "employee" or released_only) and run.status != "locked":
             raise HTTPException(404, "Payslip not yet released")
         for p in run.payslips:
             if p.employee_id == employee_id:

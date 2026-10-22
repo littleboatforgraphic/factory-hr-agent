@@ -1,0 +1,7 @@
+# Cloud agent: staff chat accounts per factory. `user` must match the factory node token user
+# (the node only accepts HR actions on behalf of users with the hr role). Employees are not listed here:
+# they are recognised by the Telegram id / phone number in their factory's master.xlsx.
+staff:
+  - {factory_id: demo-pahang, user: hr1, role: hr, telegram_id: "100000001", whatsapp: "60120000001", language: en}
+  - {factory_id: demo-pahang, user: acct1, role: accountant, whatsapp: "60120000002", language: en}
+  - {factory_id: demo-pahang, user: gm, role: management, telegram_id: "100000003", language: zh}

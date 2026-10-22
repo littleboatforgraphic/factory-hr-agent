@@ -45,6 +45,7 @@ ignore = ["E501"]
 [tool.ruff.lint.per-file-ignores]
 "src/hr_agent/money.py" = ["N802"]
 "src/hr_agent/factory_node/app.py" = ["B008"]
+"src/hr_agent/cloud_agent/app.py" = ["B008"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

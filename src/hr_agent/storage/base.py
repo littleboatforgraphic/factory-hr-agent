@@ -7,6 +7,7 @@ from datetime import date
 
 from hr_agent.models import (
     AttendanceOverride,
+    ChatLink,
     Employee,
     LeaveBalance,
     LeaveCredit,
@@ -41,6 +42,12 @@ class Store(ABC):
 
     @abstractmethod
     def add_leave_credit(self, credit: LeaveCredit) -> LeaveCredit: ...
+
+    @abstractmethod
+    def chat_links(self) -> list[ChatLink]: ...
+
+    @abstractmethod
+    def add_chat_link(self, link: ChatLink) -> ChatLink: ...
 
     @abstractmethod
     def overrides(self, start: date, end: date) -> list[AttendanceOverride]: ...

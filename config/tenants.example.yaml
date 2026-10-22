@@ -5,3 +5,8 @@ tenants:
     node_url: https://demo-pahang-node.example.internal   # reached via Cloudflare Tunnel / Tailscale
     token_env: NODE_TOKEN_DEMO_PAHANG
     llm_key_env: LLM_KEY_DEMO_PAHANG
+    # Chat channels: one Telegram bot and one WhatsApp business number per factory.
+    telegram_token_env: TELEGRAM_TOKEN_DEMO_PAHANG      # from @BotFather
+    telegram_secret_env: TELEGRAM_SECRET_DEMO_PAHANG    # random string, checked on every webhook call
+    whatsapp_phone_number_id: "000000000000000"         # Meta WhatsApp Cloud API phone number id
+    whatsapp_token_env: WHATSAPP_TOKEN_DEMO_PAHANG

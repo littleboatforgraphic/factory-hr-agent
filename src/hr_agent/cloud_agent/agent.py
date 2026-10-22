@@ -56,6 +56,11 @@ class Tenant:
     node_url: str
     token_env: str
     llm_key_env: str | None = None  # env var holding this client's llm-gateway key; falls back to LLM_API_KEY
+    # Chat channels (one Telegram bot and one WhatsApp number per factory); secrets come from env vars.
+    telegram_token_env: str | None = None
+    telegram_secret_env: str | None = None
+    whatsapp_phone_number_id: str | None = None
+    whatsapp_token_env: str | None = None
 
     def llm_api_key(self) -> str | None:
         return (os.environ.get(self.llm_key_env) if self.llm_key_env else None) or os.environ.get("LLM_API_KEY")
@@ -109,7 +114,8 @@ class FactoryTools:
         if name == "get_flags":
             return self._get(f"/runs/{period}/flags")
         if name == "get_payslip":
-            return self._get(f"/runs/{period}/payslips/{args['employee_id']}")
+            released = "?released_only=true" if self.employee_id is not None else ""
+            return self._get(f"/runs/{period}/payslips/{args['employee_id']}{released}")
         return {"error": 400, "detail": f"Unknown tool {name}"}
 
 

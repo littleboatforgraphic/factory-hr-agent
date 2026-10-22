@@ -128,6 +128,16 @@ class LeaveSummaryRow(BaseModel):
     balance: Decimal | None = None
 
 
+class ChatLink(BaseModel):
+    """A chat account (e.g. Telegram user id) linked to an employee after their phone number matched."""
+
+    employee_id: str
+    channel: Literal["telegram", "whatsapp"]
+    chat_id: str
+    linked_at: datetime | None = None
+    linked_by: str = ""
+
+
 class Punch(BaseModel):
     employee_id: str
     timestamp: datetime
