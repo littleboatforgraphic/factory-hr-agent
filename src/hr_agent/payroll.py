@@ -9,12 +9,11 @@ from decimal import Decimal
 from hr_agent.config import FactoryConfig
 from hr_agent.models import (
     DEFAULT_LEAVE_PAID,
-    Allowance,
-    Bonus,
     DayResult,
     Employee,
     Flag,
     Line,
+    PayItemEntry,
     Payslip,
     TaxInfo,
 )
@@ -28,6 +27,14 @@ class YearToDate:
     normal_taxable: Decimal = ZERO
     epf_employee: Decimal = ZERO
     pcb: Decimal = ZERO
+    tp1_deductions: Decimal = ZERO
+    zakat: Decimal = ZERO
+    items: dict[str, Decimal] = field(default_factory=dict)  # per line code, earlier months this year
+
+
+def _within_annual_cap(ytd: Decimal, amount: Decimal, cap: Decimal) -> Decimal:
+    """Part of this month's amount that still fits under an annual cap."""
+    return max(min(ytd + amount, cap) - min(ytd, cap), ZERO)
 
 
 @dataclass
@@ -76,8 +83,7 @@ def compute_payslip(
     days: list[DayResult],
     attendance_start: date,
     attendance_end: date,
-    allowances: list[Allowance],
-    bonuses: list[Bonus],
+    pay_items: list[PayItemEntry],
     ytd: YearToDate,
     statutory: MalaysiaStatutory,
 ) -> tuple[Payslip, list[Flag]]:
@@ -167,33 +173,72 @@ def compute_payslip(
     elif ot_hours_total >= ot.warn_at_hours:
         flag("warning", "ot_near_cap", f"{ot_hours_total} OT hours is close to the {ot.monthly_cap_hours} h limit")
 
-    # Allowances and bonuses.
-    epf_extra = socso_extra = taxable_extra = ZERO
-    for a in allowances:
-        if not a.active_in(month_start, month_end):
+    # Company pay items: allowances, incentives, benefits in kind, employer contributions, deductions.
+    epf_extra = epf_extra_ar = socso_extra = eis_extra = hrd_extra = ZERO
+    taxable_normal = taxable_additional = tax_exempt = bik = tp1 = zakat = ZERO
+    later_deductions: list[tuple[str, str, Decimal, str]] = []
+    for entry in pay_items:
+        if not entry.applies_to(period, month_start, month_end):
             continue
-        amt = b.add("earning", f"ALW_{a.name.upper().replace(' ', '_')}", a.name, a.amount, "Configured allowance")
-        epf_extra += amt if a.epf else ZERO
-        socso_extra += amt if a.socso else ZERO
-        taxable_extra += amt if a.taxable else ZERO
-    bonus_total = bonus_epf = ZERO
-    for bonus in bonuses:
-        if not bonus.approved_by:
-            flag("warning", "bonus_not_approved", f"{bonus.name} RM{bonus.amount} excluded: no management approval")
+        code, item = entry.item, factory.pay_items.get(entry.item)
+        if item is None:
+            flag("error", "unknown_pay_item", f"Pay item {code!r} RM{entry.amount} is not in this company's pay-item list")
             continue
-        amt = b.add("earning", "BONUS", bonus.name, bonus.amount, f"Approved by {bonus.approved_by}")
-        bonus_total += amt
-        bonus_epf += amt if bonus.epf else ZERO
+        if item.requires_approval and not entry.approved_by:
+            flag("warning", "pay_item_not_approved", f"{item.name} RM{entry.amount} excluded: not approved")
+            continue
+        amount = round_cents(entry.amount)
+        trace = f"Pay item {code}" + (f", approved by {entry.approved_by}" if entry.approved_by else "")
+        trace += f" ({entry.note})" if entry.note else ""
+        prior = D(ytd.items.get(code, ZERO))
+        if item.type == "deduction":
+            if item.tp1_relief_annual_cap is not None:
+                relief = _within_annual_cap(prior, amount, item.tp1_relief_annual_cap)
+                tp1 += relief
+                trace += f"; TP1 relief RM{relief} (cap RM{item.tp1_relief_annual_cap}/year)"
+            if item.zakat:
+                zakat += amount
+            later_deductions.append((code, item.name, amount, trace))
+            continue
+
+        if item.tax == "exempt":
+            exempt = amount if item.tax_exempt_annual_limit is None else _within_annual_cap(
+                prior, amount, item.tax_exempt_annual_limit)
+            taxable = amount - exempt
+            trace += f"; tax exempt RM{exempt}" + (f", taxable RM{taxable}" if taxable else "")
+        else:
+            exempt, taxable = ZERO, amount
+        tax_exempt += exempt
+        if item.tax == "additional":
+            taxable_additional += taxable
+        else:
+            taxable_normal += taxable
+
+        if item.type == "employer_contribution":
+            b.add("employer", code, item.name, amount, trace)
+        elif item.type == "benefit_in_kind":
+            bik += b.add("benefit", code, item.name, amount, trace + "; non-cash, for PCB only")
+        else:
+            b.add("earning", code, item.name, amount, trace)
+            if item.epf:
+                if item.tax == "additional":
+                    epf_extra_ar += amount
+                else:
+                    epf_extra += amount
+            socso_extra += amount if item.socso else ZERO
+            eis_extra += amount if item.eis else ZERO
+            hrd_extra += amount if item.hrd else ZERO
 
     gross = sum((ln.amount for ln in b.lines if ln.kind == "earning"), ZERO)
     unpaid_amt = sum((ln.amount for ln in b.lines if ln.code == "UNPAID"), ZERO)
     ot_amt = sum((ln.amount for ln in b.lines if ln.code.startswith("OT_")), ZERO)
 
-    # Statutory wages: OT is excluded from EPF but included for SOCSO/EIS; bonus is EPF-able only.
+    # Statutory wages: OT counts for SOCSO/EIS but not EPF; pay items follow their company settings.
     category = employee.category
     epf_wage_normal = basic + unpaid_amt + epf_extra
-    epf_wage = epf_wage_normal + bonus_epf
+    epf_wage = epf_wage_normal + epf_extra_ar
     socso_wage = basic + unpaid_amt + ot_amt + socso_extra
+    eis_wage = basic + unpaid_amt + ot_amt + eis_extra
 
     age = _age_on(employee.date_of_birth, month_end)
     if age is None and category == "local":
@@ -202,9 +247,9 @@ def compute_payslip(
     epf = statutory.epf(epf_wage, category, age)
     epf_normal = statutory.epf(epf_wage_normal, category, age)
     socso = statutory.socso(socso_wage, category, age, employee.socso_category)
-    eis = statutory.eis(socso_wage, category, age, employee.eis_exempt)
+    eis = statutory.eis(eis_wage, category, age, employee.eis_exempt)
 
-    normal_taxable = gross - bonus_total
+    normal_taxable = basic + unpaid_amt + ot_amt + taxable_normal
     married_nonworking = employee.marital_status == "married" and not employee.spouse_working
     _, month = parse_period(period)
     pcb = statutory.pcb(
@@ -217,19 +262,25 @@ def compute_payslip(
         ytd_pcb=ytd.pcb,
         current_taxable=normal_taxable,
         current_epf=epf_normal.employee,
-        additional_taxable=bonus_total,
+        additional_taxable=taxable_additional,
         additional_epf=epf.employee - epf_normal.employee,
+        ytd_deductions=ytd.tp1_deductions,
+        current_deductions=tp1,
+        ytd_zakat=ytd.zakat,
+        current_zakat=zakat,
     )
 
     b.add("deduction", "EPF_EE", "EPF (employee)", epf.employee, epf.trace)
     b.add("deduction", "SOCSO_EE", "SOCSO (employee)", socso.employee, socso.trace)
     b.add("deduction", "EIS_EE", "EIS (employee)", eis.employee, eis.trace)
     b.add("deduction", "PCB", "Income tax (PCB)", pcb.employee, pcb.trace)
+    for code, name, amount, trace in later_deductions:
+        b.add("deduction", code, name, amount, trace)
     b.add("employer", "EPF_ER", "EPF (employer)", epf.employer, epf.trace)
     b.add("employer", "SOCSO_ER", "SOCSO (employer)", socso.employer, socso.trace)
     b.add("employer", "EIS_ER", "EIS (employer)", eis.employer, eis.trace)
     if factory.statutory.hrd_levy_enabled and category == "local":
-        levy_base = basic + unpaid_amt + epf_extra
+        levy_base = basic + unpaid_amt + hrd_extra
         b.add(
             "employer",
             "HRD",
@@ -243,6 +294,10 @@ def compute_payslip(
     net = gross - deductions
     if net < 0:
         flag("error", "negative_net", f"Net pay is negative (RM{net})")
+    other_deductions = sum((amount for _, _, amount, _ in later_deductions), ZERO)
+    if gross > 0 and other_deductions > gross / 2:
+        flag("warning", "deductions_over_half", f"Non-statutory deductions RM{other_deductions} exceed 50% of "
+             f"wages RM{round_cents(gross)}; check Employment Act s.24 limits")
 
     for label, expiry in (("Work permit", employee.permit_expiry), ("Passport", employee.passport_expiry)):
         if expiry and expiry <= month_end + timedelta(days=60):
@@ -264,10 +319,14 @@ def compute_payslip(
         ot_hours_total=ot_hours_total,
         tax=TaxInfo(
             normal_taxable=round_cents(normal_taxable),
-            additional_taxable=round_cents(bonus_total),
+            additional_taxable=round_cents(taxable_additional),
             epf_employee_normal=epf_normal.employee,
             epf_employee_additional=epf.employee - epf_normal.employee,
             pcb=pcb.employee,
+            tax_exempt=round_cents(tax_exempt),
+            benefits_in_kind=round_cents(bik),
+            tp1_deductions=round_cents(tp1),
+            zakat=round_cents(zakat),
         ),
         days=days,
     )

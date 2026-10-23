@@ -22,7 +22,9 @@ Rules:
 - Never calculate, estimate or change any pay figure. Only quote amounts and calculation traces returned by tools.
 - If a tool does not return the answer, say you don't know and refer the user to HR.
 - Reply in the user's language ({language}). Keep answers short and plain.
-- Do not reveal one employee's data to another employee."""
+- Do not reveal one employee's data to another employee.
+- Record replacement leave only when the HR officer instructs you to and says the employee and the approving
+  manager have confirmed. Repeat back the employee, days, date worked and manager in your reply."""
 
 TOOLS = [
     {"type": "function", "function": {"name": "get_run_summary", "description": "Totals and flag counts for a payroll period",
@@ -31,6 +33,20 @@ TOOLS = [
         "parameters": {"type": "object", "properties": {"period": {"type": "string"}}, "required": ["period"]}}},
     {"type": "function", "function": {"name": "get_payslip", "description": "Payslip lines with calculation traces for one employee",
         "parameters": {"type": "object", "properties": {"period": {"type": "string"}, "employee_id": {"type": "string"}}, "required": ["period", "employee_id"]}}},
+]
+
+# Only offered when an HR officer is chatting; the factory node checks the officer again.
+HR_WRITE_TOOLS = [
+    {"type": "function", "function": {"name": "record_replacement_leave",
+        "description": "Record replacement leave days granted to an employee, on the HR officer's instruction",
+        "parameters": {"type": "object", "properties": {
+            "employee_id": {"type": "string"},
+            "days": {"type": "number", "description": "0.5 or whole days"},
+            "worked_on": {"type": "string", "description": "YYYY-MM-DD the employee worked (rest day / public holiday)"},
+            "reason": {"type": "string"},
+            "employee_confirmed": {"type": "boolean", "description": "HR officer confirmed with the employee"},
+            "manager_confirmed_by": {"type": "string", "description": "Name of the manager who approved"},
+        }, "required": ["employee_id", "days", "worked_on", "employee_confirmed", "manager_confirmed_by"]}}},
 ]
 
 
@@ -57,9 +73,10 @@ def load_tenants(path: str | Path) -> dict[str, Tenant]:
 class FactoryTools:
     """Read-only tools bound to one tenant and, for employees, one employee id."""
 
-    def __init__(self, http: httpx.Client, employee_id: str | None = None):
+    def __init__(self, http: httpx.Client, employee_id: str | None = None, hr_user: str | None = None):
         self.http = http
         self.employee_id = employee_id
+        self.hr_user = hr_user
 
     def _get(self, path: str) -> Any:
         r = self.http.get(path)
@@ -67,8 +84,22 @@ class FactoryTools:
             return {"error": r.status_code, "detail": r.json().get("detail") if r.headers.get("content-type", "").startswith("application/json") else r.text}
         return r.json()
 
+    def _post(self, path: str, body: dict, params: dict) -> Any:
+        r = self.http.post(path, json=body, params=params)
+        if r.status_code >= 400:
+            return {"error": r.status_code, "detail": r.json().get("detail") if r.headers.get("content-type", "").startswith("application/json") else r.text}
+        return r.json()
+
     def call(self, name: str, args: dict) -> Any:
         period = args.get("period", "")
+        if name == "record_replacement_leave":
+            if self.employee_id is not None or not self.hr_user:
+                return {"error": 403, "detail": "Only an HR officer can instruct the agent to record leave"}
+            worked_on = str(args.get("worked_on") or "")
+            body = {**{k: args.get(k) for k in ("employee_id", "days", "reason", "employee_confirmed", "manager_confirmed_by")},
+                    "worked_on": worked_on or None, "year": int(worked_on[:4]) if worked_on[:4].isdigit() else None}
+            return self._post("/leave/replacement", {k: v for k, v in body.items() if v is not None},
+                              {"on_behalf_of": self.hr_user})
         if self.employee_id is not None:
             if name != "get_payslip":
                 return {"error": 403, "detail": "Employees may only view their own payslip"}
@@ -106,17 +137,20 @@ class Agent:
         return self._llm_by_tenant[tenant.factory_id]
 
     def ask(self, factory_id: str, message: str, *, language: str = "en", employee_id: str | None = None,
-            http: httpx.Client | None = None, max_steps: int = 5) -> str:
+            hr_user: str | None = None, http: httpx.Client | None = None, max_steps: int = 5) -> str:
+        """employee_id: an employee chatting about their own payslip. hr_user: an HR officer (enables HR tools)."""
         tenant = self.tenants.get(factory_id)
         if tenant is None:
             raise KeyError(f"Unknown factory {factory_id!r}")
-        tools = FactoryTools(http or tenant.client(), employee_id)
+        tools = FactoryTools(http or tenant.client(), employee_id, hr_user if employee_id is None else None)
         llm = self.llm_for(tenant)
         metering: dict[str, Any] = {"extra_body": {"metadata": {"tags": [
             f"factory:{factory_id}", "op:employee-qa" if employee_id is not None else "op:hr-qa"]}}}
         if (user := usage_user_id(factory_id, employee_id)) is not None:
             metering["user"] = user
         tool_list = [t for t in TOOLS if employee_id is None or t["function"]["name"] == "get_payslip"]
+        if employee_id is None and hr_user:
+            tool_list += HR_WRITE_TOOLS
         messages: list[dict] = [
             {"role": "system", "content": SYSTEM_PROMPT.format(language=language)},
             {"role": "user", "content": message},

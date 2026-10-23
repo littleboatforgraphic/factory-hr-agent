@@ -1,4 +1,5 @@
 import json
+from decimal import Decimal
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -59,11 +60,13 @@ def test_import_run_approve_lock_bank(factory, store, seeded, tmp_path):
     assert out.read_text().count("SALARY 2026-09") == 2
 
 
-def _fake_llm(calls):
+def _fake_llm(calls, tool="get_payslip", args=None):
+    args = args or {"period": "2026-09", "employee_id": "L1"}
+
     def create(**kw):
         calls.append(kw)
         if len(calls) == 1:
-            tc = SimpleNamespace(id="c1", function=SimpleNamespace(name="get_payslip", arguments=json.dumps({"period": "2026-09", "employee_id": "L1"})))
+            tc = SimpleNamespace(id="c1", function=SimpleNamespace(name=tool, arguments=json.dumps(args)))
             return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content="", tool_calls=[tc]))])
         return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content="done", tool_calls=None))])
 
@@ -151,3 +154,38 @@ def test_ytd_accumulates_from_locked_runs(factory, store, seeded):
     assert s.ytd["EPF_EE"] == a.ytd["EPF_EE"] + next(ln.amount for ln in s.lines if ln.code == "EPF_EE")
     html = render_payslip_html(s, emp("L1", "3000", "local"), factory)
     assert "To Be Credited" in html and "YTD(MYR)" in html
+    assert [r.leave_type.value for r in s.leave][:3] == ["annual", "medical", "hospitalisation"]
+    assert "Taken YTD" in html and "Hospitalisation" in html
+
+
+def test_replacement_leave_by_hr_or_agent_on_hr_instruction(factory, store, seeded):
+    client = TestClient(create_app(factory, store, TOKENS))
+    h = lambda t: {"Authorization": f"Bearer {t}"}  # noqa: E731
+    body = {"employee_id": "F1", "year": 2026, "days": 1, "worked_on": "2026-09-16", "reason": "Malaysia Day",
+            "employee_confirmed": True, "manager_confirmed_by": "Mgr Tan"}
+    assert client.post("/leave/replacement", json={**body, "employee_confirmed": False}, headers=h("t-hr")).status_code == 400
+    assert client.post("/leave/replacement", json=body, headers=h("t-acct")).status_code == 403
+    assert client.post("/leave/replacement", json=body, headers=h("t-agent")).status_code == 403  # no HR officer named
+    assert client.post("/leave/replacement", json=body, params={"on_behalf_of": "acct"}, headers=h("t-agent")).status_code == 403
+    r = client.post("/leave/replacement", json=body, headers=h("t-hr"))
+    assert r.status_code == 200 and r.json()["recorded_by"] == "hr1"
+
+    args = {"employee_id": "F1", "days": 0.5, "worked_on": "2026-09-20", "employee_confirmed": True,
+            "manager_confirmed_by": "Mgr Tan"}
+    calls = []
+    agent = Agent({factory.id: Tenant(factory.id, "http://node", "X")}, llm=_fake_llm(calls, "record_replacement_leave", args), model="m")
+    agent_client = TestClient(create_app(factory, store, TOKENS), headers=h("t-agent"))
+    agent.ask(factory.id, "Give F1 half a day replacement leave for 20 Sep, Mgr Tan approved", hr_user="hr1", http=agent_client)
+    assert "record_replacement_leave" in [t["function"]["name"] for t in calls[0]["tools"]]
+    assert '"on_behalf_of": "hr1"' in calls[1]["messages"][-1]["content"]
+
+    calls.clear()  # without an HR officer the tool is neither offered nor usable
+    agent.ask(factory.id, "same again", http=agent_client)
+    assert "record_replacement_leave" not in [t["function"]["name"] for t in calls[0]["tools"]]
+    assert '"error": 403' in calls[1]["messages"][-1]["content"]
+
+    credits = store.leave_credits(2026)
+    assert [(c.days, c.recorded_by, c.on_behalf_of) for c in credits] == [(1, "hr1", ""), (Decimal("0.5"), "agent", "hr1")]
+    run = service.run_payroll(factory, store, "2026-09", "hr1")
+    f1 = next(p for p in run.payslips if p.employee_id == "F1")
+    assert next(r.entitled for r in f1.leave if r.leave_type.value == "replacement") == Decimal("1.5")

@@ -19,6 +19,7 @@ from pydantic import BaseModel
 
 from hr_agent import service
 from hr_agent.config import FactoryConfig, load_factory
+from hr_agent.models import LeaveCredit, LeaveType
 from hr_agent.storage import RunLockedError, open_store
 from hr_agent.storage.base import Store
 
@@ -97,6 +98,22 @@ def create_app(factory: FactoryConfig, store: Store, tokens: dict[str, dict]) ->
         except (ValueError, RunLockedError) as e:
             raise HTTPException(409, str(e)) from e
         return service.run_summary(run)
+
+    @app.post("/leave/replacement")
+    def replacement_leave(credit: LeaveCredit, on_behalf_of: str = "", c: Caller = Depends(require({"hr", "agent"}))):
+        """HR records replacement leave; the agent may do so only on a named HR officer's instruction."""
+        if c.role == "agent":
+            hr_users = {i["user"] for i in tokens.values() if i.get("role") == "hr"}
+            if on_behalf_of not in hr_users:
+                raise HTTPException(403, "The agent can record leave only on behalf of an HR officer")
+        else:
+            on_behalf_of = ""
+        try:
+            saved = service.record_leave_credit(store, credit.model_copy(update={"leave_type": LeaveType.replacement}),
+                                                c.user, on_behalf_of)
+        except ValueError as e:
+            raise HTTPException(400, str(e)) from e
+        return saved.model_dump(mode="json")
 
     @app.get("/runs/{period}/payslips/{employee_id}")
     def payslip(period: str, employee_id: str, version: int | None = None, c: Caller = Depends(caller)):

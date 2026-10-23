@@ -3,11 +3,12 @@ from __future__ import annotations
 from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
+from markupsafe import Markup, escape
 
 from hr_agent.config import FactoryConfig
 from hr_agent.models import Employee, Payslip
-from hr_agent.money import ZERO, D
-from hr_agent.payslip.i18n import label
+from hr_agent.money import D
+from hr_agent.payslip.i18n import MONTHS, label, pick
 from hr_agent.periods import month_bounds, pay_date
 
 _env = Environment(loader=FileSystemLoader(Path(__file__).parent), autoescape=select_autoescape())
@@ -26,9 +27,10 @@ def build_rows(payslip: Payslip, L) -> list[dict]:  # noqa: N803
     ytd = payslip.ytd
 
     def item(ln, bracket=False):
-        text = L(ln.code, ln.label)
+        suffix = ""
         if ln.quantity and ln.code.startswith(("OT_", "UNPAID")):
-            text += f" ({ln.quantity}{' h' if ln.code.startswith('OT_') else ' d'})"
+            suffix = f" ({ln.quantity}{' h' if ln.code.startswith('OT_') else ' d'})"
+        text = L(ln.code, ln.label, suffix)
         cur, total = ln.amount, ytd.get(ln.code, ln.amount)
         return {"kind": "item", "text": text, "cur": _neg(cur) if bracket else _fmt(cur), "ytd": _neg(total) if bracket else _fmt(total)}
 
@@ -46,17 +48,49 @@ def build_rows(payslip: Payslip, L) -> list[dict]:  # noqa: N803
     return rows
 
 
-def render_payslip_html(payslip: Payslip, employee: Employee, factory: FactoryConfig) -> str:
-    lang = employee.language if employee.language in factory.payslip_languages else "en"
+def payslip_languages(employee: Employee, factory: FactoryConfig) -> tuple[str, str | None]:
+    """(primary, secondary) from the company's payslip_language_mode and the employee's language."""
+    mode = factory.payslip_language_mode
+    primary = "ms" if mode.startswith("ms") else "en"
+    own = employee.language if employee.language in factory.payslip_languages else None
+    secondary = own if mode.endswith("+employee") and own != primary else None
+    return primary, secondary
 
-    def L(key: str, fallback: str | None = None) -> str:  # noqa: N802
-        return label(key, lang, fallback)
+
+def _date(d, lang: str) -> str:
+    return f"{d.day:02d} {MONTHS.get(lang, MONTHS['en'])[d.month - 1]} {d.year}"
+
+
+def _days(v) -> str:
+    return "-" if v is None else f"{D(v).normalize():f}"
+
+
+def render_payslip_html(payslip: Payslip, employee: Employee, factory: FactoryConfig) -> str:
+    primary, secondary = payslip_languages(employee, factory)
+
+    def texts(key: str, fallback: str | None = None) -> tuple[str, str | None]:
+        item = factory.pay_items.get(key.removesuffix("_FULL"))
+        if item:
+            return pick({"en": item.name, **item.labels}, item.name, primary, secondary)
+        return label(key, primary, secondary, fallback)
+
+    def P(key: str, fallback: str | None = None) -> str:  # noqa: N802 - main language
+        return texts(key, fallback)[0]
+
+    def S(key: str, fallback: str | None = None) -> str:  # noqa: N802 - second language, falls back to main
+        first, other = texts(key, fallback)
+        return other or first
+
+    def L(key: str, fallback: str | None = None, suffix: str = "") -> Markup:  # noqa: N802
+        """Main language, with the second language on the line beneath."""
+        first, other = texts(key, fallback)
+        out = escape(first + suffix)
+        return Markup(f'{out}<br><span class="sub">{escape(other)}</span>') if other else out
 
     days = [d for d in payslip.days if d.status != "not_employed"]
     att = {
         "working": sum(1 for d in days if d.day_type == "normal"),
         "present": sum(1 for d in days if d.status in ("present", "incomplete") and d.day_type == "normal"),
-        "leave": sum((d.leave_days for d in days), ZERO),
         "absent": sum(1 for d in days if d.status == "absent"),
     }
     start, end = month_bounds(payslip.period)
@@ -65,14 +99,17 @@ def render_payslip_html(payslip: Payslip, employee: Employee, factory: FactoryCo
     hourly = daily / factory.ot.hourly_divisor_hours
     logo = getattr(factory.employer, "logo_file", None)
     return _env.get_template("template.html").render(
-        L=L, e=employee, p=payslip, employer=factory.employer,
+        L=L, P=P, S=S, bilingual=secondary is not None, e=employee, p=payslip, employer=factory.employer,
         logo=factory.resolve(logo).as_uri() if logo else None,
         location=" / ".join(x for x in (employee.department, factory.state) if x),
-        period_range=f"{start:%d %b %Y} - {end:%d %b %Y}",
+        period_range=f"{_date(start, primary)} - {_date(end, primary)}",
         basic_salary=_fmt(salary), daily=_fmt(daily), hourly=f"{hourly:,.3f}",
-        net=_fmt(payslip.net), pay_date=pay_date(payslip.period, factory.calendar).strftime("%d %b %Y"),
+        net=_fmt(payslip.net), pay_date=_date(pay_date(payslip.period, factory.calendar), primary),
         att_range=f"{payslip.attendance_start:%d/%m}-{payslip.attendance_end:%d/%m/%Y}",
         rows=build_rows(payslip, L), att=att,
+        leave=[{"type": P("LV_" + r.leave_type.value), "entitled": _days(r.entitled), "cf": _days(r.carried_forward),
+                "month": _days(r.taken_month), "ytd": _days(r.taken_ytd), "balance": _days(r.balance)}
+               for r in payslip.leave],
     )
 
 

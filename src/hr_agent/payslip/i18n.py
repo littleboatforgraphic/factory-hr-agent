@@ -3,6 +3,21 @@ Bengali (bn), Burmese (my) and Nepali (ne) are pending review and fall back to E
 
 LABELS: dict[str, dict[str, str]] = {
     "page": {"en": "Page", "ms": "Muka", "zh": "页"},
+    "page_of": {"en": "Page 1 of 1", "ms": "Muka 1 daripada 1", "zh": "第 1 页，共 1 页"},
+    "entitled": {"en": "Entitled", "ms": "Kelayakan", "zh": "应享"},
+    "carry_forward": {"en": "Carry Forward", "ms": "Bawa Depan", "zh": "结转"},
+    "this_month": {"en": "This month", "ms": "Bulan ini", "zh": "本月"},
+    "taken_ytd": {"en": "Taken YTD", "ms": "Diambil (tahun)", "zh": "年度已休"},
+    "balance": {"en": "Balance", "ms": "Baki", "zh": "余额"},
+    "LV_annual": {"en": "Annual", "ms": "Tahunan", "zh": "年假"},
+    "LV_medical": {"en": "Medical (MC)", "ms": "Sakit (MC)", "zh": "病假"},
+    "LV_hospitalisation": {"en": "Hospitalisation", "ms": "Hospital", "zh": "住院假"},
+    "LV_maternity": {"en": "Maternity", "ms": "Bersalin", "zh": "产假"},
+    "LV_paternity": {"en": "Paternity", "ms": "Paterniti", "zh": "陪产假"},
+    "LV_replacement": {"en": "Replacement", "ms": "Ganti", "zh": "补假"},
+    "LV_emergency": {"en": "Emergency", "ms": "Kecemasan", "zh": "紧急假"},
+    "LV_compassionate": {"en": "Compassionate", "ms": "Ihsan", "zh": "恩恤假"},
+    "LV_unpaid": {"en": "Unpaid", "ms": "Tanpa gaji", "zh": "无薪假"},
     "basic_salary": {"en": "Basic Salary", "ms": "Gaji Pokok", "zh": "基本工资"},
     "daily": {"en": "Daily", "ms": "Harian", "zh": "日薪"},
     "hourly": {"en": "Hourly", "ms": "Sejam", "zh": "时薪"},
@@ -44,7 +59,6 @@ LABELS: dict[str, dict[str, str]] = {
     "OT_NORMAL": {"en": "Overtime 1.5x", "ms": "Lebih masa 1.5x", "zh": "加班 1.5倍"},
     "OT_REST": {"en": "Rest day work", "ms": "Kerja hari rehat", "zh": "休息日工作"},
     "OT_PH": {"en": "Public holiday work", "ms": "Kerja cuti umum", "zh": "公共假期工作"},
-    "BONUS": {"en": "Bonus / incentive", "ms": "Bonus / insentif", "zh": "奖金/奖励"},
     "PCB": {"en": "Income tax (PCB)", "ms": "Cukai pendapatan (PCB)", "zh": "所得税 (PCB)"},
     "EPF_ER": {"en": "EPF", "ms": "KWSP", "zh": "公积金"},
     "SOCSO_ER": {"en": "SOCSO", "ms": "PERKESO", "zh": "社险"},
@@ -58,11 +72,21 @@ LABELS: dict[str, dict[str, str]] = {
 }
 
 
-def label(key: str, lang: str, fallback: str | None = None) -> str:
-    """English label, plus a second line in the employee's language when available."""
+MONTHS = {
+    "en": ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"],
+    "ms": ["Jan", "Feb", "Mac", "Apr", "Mei", "Jun", "Jul", "Ogos", "Sep", "Okt", "Nov", "Dis"],
+}
+
+
+def label(key: str, primary: str = "en", secondary: str | None = None, fallback: str | None = None) -> tuple[str, str | None]:
+    """(primary text, secondary text or None). Primary is English or Malay; secondary only if translated."""
     entry = LABELS.get(key)
     if not entry:
-        return fallback or key
-    en = entry["en"]
-    other = entry.get(lang)
-    return f"{en} / {other}" if other and lang != "en" else en
+        return fallback or key, None
+    return pick(entry, entry["en"], primary, secondary)
+
+
+def pick(texts: dict[str, str], default: str, primary: str, secondary: str | None) -> tuple[str, str | None]:
+    first = texts.get(primary) or default
+    other = texts.get(secondary) if secondary else None
+    return first, (other if other and other != first else None)

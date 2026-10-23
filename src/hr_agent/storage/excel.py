@@ -1,7 +1,7 @@
 """Excel-only storage (V1). Each factory's data lives in workbooks on its own server.
 
 Layout under the storage root:
-  master.xlsx                      Employees, Allowances, Bonuses, Leave, Overrides (HR-maintained)
+  master.xlsx                      Employees, PayItems, Leave, LeaveBalances, LeaveCredits, Overrides
   attendance/punches_YYYY-MM.xlsx  imported punches, one file per month
   payroll/YYYY-MM/run_vN.xlsx      one immutable file per payroll run version
   audit_log.xlsx                   append-only audit trail
@@ -18,11 +18,12 @@ from filelock import FileLock
 from openpyxl import Workbook, load_workbook
 
 from hr_agent.models import (
-    Allowance,
     AttendanceOverride,
-    Bonus,
     Employee,
+    LeaveBalance,
+    LeaveCredit,
     LeaveRecord,
+    PayItemEntry,
     PayrollRun,
     Punch,
     RunStatus,
@@ -32,9 +33,10 @@ from hr_agent.storage.base import RunLockedError, Store
 
 MASTER_SHEETS: dict[str, list[str]] = {
     "Employees": list(Employee.model_fields),
-    "Allowances": list(Allowance.model_fields),
-    "Bonuses": list(Bonus.model_fields),
+    "PayItems": list(PayItemEntry.model_fields),
     "Leave": list(LeaveRecord.model_fields),
+    "LeaveBalances": list(LeaveBalance.model_fields),
+    "LeaveCredits": list(LeaveCredit.model_fields),
     "Overrides": list(AttendanceOverride.model_fields),
 }
 _BOOL = {"y": True, "yes": True, "true": True, "1": True, "n": False, "no": False, "false": False, "0": False}
@@ -116,6 +118,8 @@ class ExcelStore(Store):
         info = wb.active
         info.title = "Instructions"
         info.append(["Fill one row per record. Dates as YYYY-MM-DD; booleans as Y/N."])
+        info.append(["PayItems: item is a pay-item code from the factory config; period YYYY-MM for one-off amounts,"
+                     " or blank with start/end dates for recurring ones."])
         info.append(["Leave types: " + ", ".join(t for t in LeaveRecord.model_fields["leave_type"].annotation.__members__)])
         for name, header in MASTER_SHEETS.items():
             wb.create_sheet(name).append(header)
@@ -127,16 +131,43 @@ class ExcelStore(Store):
         rows = _read_sheet(self.master, "Employees")
         return [Employee.model_validate(_as_text_ids(r, "employee_id", "device_user_id", "bank_account", "phone", "telegram_id", "id_no")) for r in rows]
 
-    def allowances(self) -> list[Allowance]:
-        return [Allowance.model_validate(_as_text_ids(r, "employee_id")) for r in _read_sheet(self.master, "Allowances")]
-
-    def bonuses(self, period: str) -> list[Bonus]:
-        rows = [_as_text_ids(r, "employee_id", "period") for r in _read_sheet(self.master, "Bonuses")]
-        return [Bonus.model_validate(r) for r in rows if r.get("period") == period]
+    def pay_items(self) -> list[PayItemEntry]:
+        out = []
+        for r in _read_sheet(self.master, "PayItems"):
+            if isinstance(r.get("period"), (date, datetime)):  # Excel turns "2026-09" into a date
+                r["period"] = f"{r['period']:%Y-%m}"
+            r = _as_text_ids(r, "employee_id", "period")
+            r["item"] = str(r.get("item", "")).strip().upper()
+            out.append(PayItemEntry.model_validate(r))
+        return out
 
     def leave(self, start: date, end: date) -> list[LeaveRecord]:
         recs = [LeaveRecord.model_validate(_as_text_ids(r, "employee_id")) for r in _read_sheet(self.master, "Leave")]
         return [r for r in recs if r.start <= end and r.end >= start]
+
+    def leave_balances(self, year: int) -> list[LeaveBalance]:
+        recs = [LeaveBalance.model_validate(_as_text_ids(r, "employee_id")) for r in _read_sheet(self.master, "LeaveBalances")]
+        return [r for r in recs if r.year == year]
+
+    def leave_credits(self, year: int) -> list[LeaveCredit]:
+        recs = [LeaveCredit.model_validate(_as_text_ids(r, "employee_id", "manager_confirmed_by"))
+                for r in _read_sheet(self.master, "LeaveCredits")]
+        return [r for r in recs if r.year == year]
+
+    def add_leave_credit(self, credit: LeaveCredit) -> LeaveCredit:
+        header = MASTER_SHEETS["LeaveCredits"]
+        with self._lock:
+            wb = load_workbook(self.master)
+            ws = wb["LeaveCredits"] if "LeaveCredits" in wb.sheetnames else wb.create_sheet("LeaveCredits")
+            if ws.max_row == 1 and ws.cell(1, 1).value is None:
+                ws.append(header)
+            row = credit.model_dump()
+            ws.append([_cell(row[h].value if hasattr(row[h], "value") else row[h]) for h in header])
+            wb.save(self.master)
+        who = credit.recorded_by + (f" for {credit.on_behalf_of}" if credit.on_behalf_of else "")
+        self.audit("leave_credit", who, f"{credit.employee_id} +{credit.days} {credit.leave_type.value} {credit.year}"
+                   f" (worked {credit.worked_on}; manager {credit.manager_confirmed_by}; {credit.reason})")
+        return credit
 
     def overrides(self, start: date, end: date) -> list[AttendanceOverride]:
         recs = [AttendanceOverride.model_validate(_as_text_ids(r, "employee_id")) for r in _read_sheet(self.master, "Overrides")]

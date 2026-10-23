@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from datetime import time
 from decimal import Decimal
 from pathlib import Path
@@ -119,6 +120,71 @@ class StatutoryOptions(BaseModel):
     hrd_levy_rate: Decimal = Decimal("0.01")
 
 
+# Line codes the engine itself produces; pay items may not reuse them.
+RESERVED_CODES = {
+    "BASIC", "UNPAID", "PCB", "EPF_EE", "EPF_ER", "SOCSO_EE", "SOCSO_ER", "EIS_EE", "EIS_ER", "HRD",
+    "GROSS", "DEDUCTIONS", "NET",
+}
+_CODE = re.compile(r"^[A-Z][A-Z0-9_]*$")
+
+
+class PayItem(BaseModel):
+    """A company-defined allowance, incentive, benefit, employer contribution or deduction."""
+
+    name: str
+    type: Literal["earning", "benefit_in_kind", "employer_contribution", "deduction"] = "earning"
+    labels: dict[str, str] = Field(default_factory=dict)
+    epf: bool = False
+    socso: bool = False
+    eis: bool = False
+    hrd: bool = False
+    tax: Literal["normal", "additional", "exempt"] = "normal"
+    tax_exempt_annual_limit: Decimal | None = None
+    tp1_relief_annual_cap: Decimal | None = None
+    zakat: bool = False
+    requires_approval: bool = False
+    note: str = ""
+
+    @model_validator(mode="after")
+    def _consistent(self) -> PayItem:
+        if self.type != "earning" and (self.epf or self.socso or self.eis or self.hrd):
+            raise ValueError(f"{self.name}: only earnings can count as EPF/SOCSO/EIS/HRD wages")
+        if self.type != "deduction" and (self.zakat or self.tp1_relief_annual_cap is not None):
+            raise ValueError(f"{self.name}: zakat / tp1_relief_annual_cap apply to deductions only")
+        if self.tax_exempt_annual_limit is not None and self.tax != "exempt":
+            raise ValueError(f"{self.name}: tax_exempt_annual_limit needs tax: exempt")
+        if self.tax == "additional" and self.type != "earning":
+            raise ValueError(f"{self.name}: only earnings can be additional remuneration")
+        return self
+
+
+class LeaveEntitlement(BaseModel):
+    """Days per year, either flat or by completed years of service ([[min_years, days], ...])."""
+
+    days: Decimal | None = None
+    by_service_years: list[tuple[int, Decimal]] | None = None
+    count: Literal["working_days", "calendar_days"] = "working_days"
+    prorate_first_year: bool = False
+
+    def days_for(self, service_years: int) -> Decimal | None:
+        if self.by_service_years:
+            eligible = [d for years, d in sorted(self.by_service_years) if service_years >= years]
+            return eligible[-1] if eligible else ZERO
+        return self.days
+
+
+# Employment Act 1955 minimums: s.60E annual leave, s.60F sick and hospitalisation leave, s.37 maternity
+# (98 days), s.60FA paternity (7 days). A company may give more, never less.
+EA_LEAVE_MINIMUMS: dict[str, LeaveEntitlement] = {
+    "annual": LeaveEntitlement(by_service_years=[(0, Decimal(8)), (2, Decimal(12)), (5, Decimal(16))],
+                               prorate_first_year=True),
+    "medical": LeaveEntitlement(by_service_years=[(0, Decimal(14)), (2, Decimal(18)), (5, Decimal(22))]),
+    "hospitalisation": LeaveEntitlement(days=Decimal(60)),
+    "maternity": LeaveEntitlement(days=Decimal(98), count="calendar_days"),
+    "paternity": LeaveEntitlement(days=Decimal(7)),
+}
+
+
 class Employer(BaseModel):
     legal_name: str
     registration_no: str = ""
@@ -148,8 +214,13 @@ class FactoryConfig(BaseModel):
     late_grace_minutes: int = 0
     minimum_wage_monthly: Decimal = Decimal("1700")
     leave_paid: dict[str, bool] = Field(default_factory=dict)
+    leave_entitlements: dict[str, LeaveEntitlement] = Field(default_factory=dict)
+    pay_items_file: str | None = None
+    pay_items: dict[str, PayItem] = Field(default_factory=dict)
     device_profiles: list[str] = Field(default_factory=lambda: ["generic_csv"])
     payslip_languages: list[str] = Field(default_factory=lambda: ["en"])
+    # en / ms only, or en / ms plus the employee's own language (if listed in payslip_languages).
+    payslip_language_mode: Literal["en", "ms", "en+employee", "ms+employee"] = "en+employee"
     base_dir: Path = Path(".")
 
     @field_validator("country")
@@ -164,6 +235,14 @@ class FactoryConfig(BaseModel):
         if self.default_schedule not in {s.id for s in self.schedules}:
             raise ValueError(f"default_schedule {self.default_schedule!r} is not defined")
         return self
+
+    @field_validator("pay_items")
+    @classmethod
+    def _pay_item_codes(cls, items: dict[str, PayItem]) -> dict[str, PayItem]:
+        for code in items:
+            if not _CODE.match(code) or code in RESERVED_CODES or code.startswith("OT_"):
+                raise ValueError(f"Pay item code {code!r} must be UPPER_CASE and not a reserved line code")
+        return items
 
     def schedule(self, schedule_id: str | None) -> Schedule:
         sid = schedule_id or self.default_schedule
@@ -181,7 +260,23 @@ def load_factory(path: str | Path, base_dir: str | Path | None = None) -> Factor
     path = Path(path)
     data = yaml.safe_load(path.read_text(encoding="utf-8"))
     data["base_dir"] = Path(base_dir) if base_dir else _project_root(path)
+    data["pay_items"] = _merge_pay_items(data)
     return FactoryConfig.model_validate(data)
+
+
+def _merge_pay_items(data: dict) -> dict:
+    """Defaults from pay_items_file, then the factory's own items/overrides; CODE: null removes a default."""
+    items: dict = {}
+    if data.get("pay_items_file"):
+        f = Path(data["pay_items_file"])
+        f = f if f.is_absolute() else data["base_dir"] / f
+        items = yaml.safe_load(f.read_text(encoding="utf-8")) or {}
+    for code, override in (data.get("pay_items") or {}).items():
+        if override is None:
+            items.pop(code, None)
+        else:
+            items[code] = {**(items.get(code) or {}), **override}
+    return items
 
 
 def _project_root(config_path: Path) -> Path:

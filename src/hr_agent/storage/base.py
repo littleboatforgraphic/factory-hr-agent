@@ -6,11 +6,12 @@ from abc import ABC, abstractmethod
 from datetime import date
 
 from hr_agent.models import (
-    Allowance,
     AttendanceOverride,
-    Bonus,
     Employee,
+    LeaveBalance,
+    LeaveCredit,
     LeaveRecord,
+    PayItemEntry,
     PayrollRun,
     Punch,
     RunStatus,
@@ -26,13 +27,20 @@ class Store(ABC):
     def employees(self) -> list[Employee]: ...
 
     @abstractmethod
-    def allowances(self) -> list[Allowance]: ...
-
-    @abstractmethod
-    def bonuses(self, period: str) -> list[Bonus]: ...
+    def pay_items(self) -> list[PayItemEntry]:
+        """All PayItems rows (recurring and one-off); the engine picks those that apply to a period."""
 
     @abstractmethod
     def leave(self, start: date, end: date) -> list[LeaveRecord]: ...
+
+    @abstractmethod
+    def leave_balances(self, year: int) -> list[LeaveBalance]: ...
+
+    @abstractmethod
+    def leave_credits(self, year: int) -> list[LeaveCredit]: ...
+
+    @abstractmethod
+    def add_leave_credit(self, credit: LeaveCredit) -> LeaveCredit: ...
 
     @abstractmethod
     def overrides(self, start: date, end: date) -> list[AttendanceOverride]: ...

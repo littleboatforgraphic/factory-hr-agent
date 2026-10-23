@@ -3,14 +3,16 @@
 from __future__ import annotations
 
 from collections import Counter, defaultdict
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
+from decimal import Decimal
 from pathlib import Path
 
 from hr_agent.attendance import process_employee_attendance
 from hr_agent.config import FactoryConfig
 from hr_agent.devices import load_profile, parse_export
 from hr_agent.holidays import load_holidays
-from hr_agent.models import Flag, PayrollRun, Payslip, Punch, RunStatus
+from hr_agent.leave import summarise_leave
+from hr_agent.models import Flag, LeaveCredit, PayrollRun, Payslip, Punch, RunStatus
 from hr_agent.money import ZERO
 from hr_agent.payroll import YearToDate, compute_payslip
 from hr_agent.periods import attendance_bounds, month_bounds, parse_period
@@ -63,6 +65,10 @@ def _year_to_date(store: Store, period: str) -> tuple[dict[str, YearToDate], dic
             y.normal_taxable += p.tax.normal_taxable + p.tax.additional_taxable
             y.epf_employee += p.tax.epf_employee_normal + p.tax.epf_employee_additional
             y.pcb += p.tax.pcb
+            y.tp1_deductions += p.tax.tp1_deductions
+            y.zakat += p.tax.zakat
+    for eid, totals in lines.items():
+        ytd[eid].items = dict(totals)
     return ytd, lines
 
 
@@ -96,10 +102,12 @@ def run_payroll(factory: FactoryConfig, store: Store, period: str, user: str) ->
     punches_by_emp: dict[str, list[Punch]] = defaultdict(list)
     for p in store.punches(*punch_window(att_start, att_end)):
         punches_by_emp[p.employee_id].append(p)
-    leave = store.leave(att_start, att_end)
+    year = parse_period(period)[0]
+    leave = store.leave(min(date(year, 1, 1), att_start), att_end)
+    balances = store.leave_balances(year)
+    credits = store.leave_credits(year)
     overrides = store.overrides(att_start, att_end)
-    allowances = store.allowances()
-    bonuses = store.bonuses(period)
+    pay_items = store.pay_items()
     ytd, ytd_lines = _year_to_date(store, period)
 
     payslips = []
@@ -112,13 +120,17 @@ def run_payroll(factory: FactoryConfig, store: Store, period: str, user: str) ->
         payslip, f2 = compute_payslip(
             employee=emp, factory=factory, period=period, days=days,
             attendance_start=att_start, attendance_end=att_end,
-            allowances=[a for a in allowances if a.employee_id == eid],
-            bonuses=[b for b in bonuses if b.employee_id == eid],
+            pay_items=[i for i in pay_items if i.employee_id == eid],
             ytd=ytd.get(eid, YearToDate()), statutory=statutory,
         )
         totals = _line_totals(payslip)
         totals.update(ytd_lines.get(eid, Counter()))
         payslip.ytd = dict(totals)
+        payslip.leave = summarise_leave(
+            employee=emp, factory=factory, records=[rec for rec in leave if rec.employee_id == eid],
+            balances=[b for b in balances if b.employee_id == eid], holidays=calendar.dates(), year=year,
+            month_start=att_start, as_of=att_end, credits=[c for c in credits if c.employee_id == eid],
+        )
         payslips.append(payslip)
         flags.extend(f1 + f2)
 
@@ -136,6 +148,19 @@ def run_payroll(factory: FactoryConfig, store: Store, period: str, user: str) ->
         created_by=user, payslips=payslips, flags=flags,
     )
     return store.save_run(run)
+
+
+def record_leave_credit(store: Store, credit: LeaveCredit, user: str, on_behalf_of: str = "") -> LeaveCredit:
+    """Grant leave days (e.g. replacement leave) once the employee and their manager have confirmed."""
+    if credit.employee_id not in {e.employee_id for e in store.employees()}:
+        raise ValueError(f"Unknown employee {credit.employee_id!r}")
+    if not credit.employee_confirmed or not credit.manager_confirmed_by.strip():
+        raise ValueError("Confirm with the employee and name the approving manager before recording leave")
+    if credit.days % Decimal("0.5"):
+        raise ValueError("Leave is granted in half or full days")
+    credit = credit.model_copy(update={"recorded_by": user, "on_behalf_of": on_behalf_of,
+                                       "recorded_at": datetime.now().replace(microsecond=0)})
+    return store.add_leave_credit(credit)
 
 
 def transition(store: Store, period: str, version: int, target: RunStatus, user: str, role: str, note: str = "") -> PayrollRun:
