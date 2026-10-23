@@ -64,6 +64,19 @@ def create_app(factory: FactoryConfig, store: Store, tokens: dict[str, dict]) ->
             raise HTTPException(404, f"No payroll run for {period}")
         return run
 
+    staff_users = {i["user"] for i in tokens.values() if i.get("role") in STAFF}
+
+    def scope(c: Caller, on_behalf_of: str, for_employee: str, employee_id: str | None = None) -> bool:
+        """The agent must say whom it acts for: a staff user (full read) or one employee (own released
+        payslip only). Returns True when access is limited to that employee's released payslip."""
+        if c.role != "agent":
+            return False
+        if on_behalf_of and on_behalf_of in staff_users:
+            return False
+        if for_employee and employee_id is not None and for_employee == employee_id:
+            return True
+        raise HTTPException(403, "The agent must act for a staff user, or for the employee themself")
+
     @app.get("/health")
     def health():
         return {"factory_id": factory.id, "storage": factory.storage.backend, "ok": True}
@@ -88,16 +101,21 @@ def create_app(factory: FactoryConfig, store: Store, tokens: dict[str, dict]) ->
             raise HTTPException(409, str(e)) from e
 
     @app.get("/runs/{period}")
-    def summary(period: str, version: int | None = None, c: Caller = Depends(require(READERS))):
+    def summary(period: str, version: int | None = None, on_behalf_of: str = "", for_employee: str = "",
+                c: Caller = Depends(require(READERS))):
+        scope(c, on_behalf_of, for_employee)
         return service.run_summary(get_run(period, version))
 
     @app.get("/runs/{period}/flags")
-    def flags(period: str, version: int | None = None, c: Caller = Depends(require(READERS))):
+    def flags(period: str, version: int | None = None, on_behalf_of: str = "", for_employee: str = "",
+              c: Caller = Depends(require(READERS))):
+        scope(c, on_behalf_of, for_employee)
         return [f.model_dump(mode="json") for f in get_run(period, version).flags]
 
     @app.get("/runs/{period}/attendance")
     def attendance(period: str, department: str = "", employee_id: str = "", version: int | None = None,
-                   c: Caller = Depends(require(READERS))):
+                   on_behalf_of: str = "", for_employee: str = "", c: Caller = Depends(require(READERS))):
+        scope(c, on_behalf_of, for_employee)
         return service.attendance_report(get_run(period, version), store.employees(), department, employee_id)
 
     @app.post("/runs/{period}/{version}/{target}")
@@ -145,7 +163,8 @@ def create_app(factory: FactoryConfig, store: Store, tokens: dict[str, dict]) ->
 
     @app.get("/runs/{period}/payslips/{employee_id}")
     def payslip(period: str, employee_id: str, version: int | None = None, released_only: bool = False,
-                c: Caller = Depends(caller)):
+                on_behalf_of: str = "", for_employee: str = "", c: Caller = Depends(caller)):
+        released_only = scope(c, on_behalf_of, for_employee, employee_id) or released_only
         if c.role == "employee":
             if c.employee_id != employee_id:
                 raise HTTPException(403, "Employees can only view their own payslip")

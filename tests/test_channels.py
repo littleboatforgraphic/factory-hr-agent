@@ -97,6 +97,11 @@ def test_telegram_employee_links_by_phone_then_asks_about_own_payslip(chat, stor
     wb.save(store.master)
     tg(client, 6, 777, "my payslip?")
     assert sent["telegram"][-1]["text"] == TEXTS["unregistered_telegram"]
+    wb = load_workbook(store.master)  # changing the number back does not revive the old link
+    wb["Employees"].cell(2, col).value = "012-345 6789"
+    wb.save(store.master)
+    tg(client, 7, 777, "my payslip?")
+    assert sent["telegram"][-1]["text"] == TEXTS["unregistered_telegram"]
 
 
 def test_telegram_staff_roles(chat):
@@ -177,7 +182,7 @@ def test_staff_attendance_tool(factory, store, tmp_path):
     calls = []
     agent = Agent({factory.id: Tenant(factory.id, "http://node", "X")},
                   llm=_fake_llm(calls, "get_attendance", {"period": "2026-09", "department": "Line 3"}), model="m")
-    agent.ask(factory.id, "Who missed punches in Line 3?", http=TestClient(
+    agent.ask(factory.id, "Who missed punches in Line 3?", staff_user="gm", http=TestClient(
         create_app(factory, store, TOKENS), headers={"Authorization": "Bearer t-agent"}))
     result = json.loads(calls[1]["messages"][-1]["content"])
     assert [e["employee_id"] for e in result["employees"]] == ["F2"] and result["employees"][0]["missing_punch_days"] == 1

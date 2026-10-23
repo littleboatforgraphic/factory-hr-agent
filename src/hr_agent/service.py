@@ -160,12 +160,25 @@ def find_employee(store: Store, *, telegram_id: str = "", phone: str = "") -> Em
     """Current employee by Telegram user id (master or linked) or by phone number."""
     employees = _current_employees(store)
     if telegram_id:
-        links = [lk for lk in store.chat_links() if lk.channel == "telegram" and lk.chat_id == telegram_id]
         for e in employees:
             if e.telegram_id == telegram_id:
                 return e
-            if any(lk.employee_id == e.employee_id and lk.phone and lk.phone == normalize_phone(e.phone) for lk in links):
+        current = {e.employee_id: e for e in employees}
+        latest: dict[str, ChatLink] = {}
+        for lk in store.chat_links():
+            if lk.channel == "telegram" and lk.chat_id == telegram_id:
+                latest[lk.employee_id] = lk
+        for eid, lk in latest.items():
+            e = current.get(eid)
+            if e is None or lk.revoked:
+                continue
+            phone_now = normalize_phone(e.phone)
+            if not lk.phone and phone_now:  # link saved before links were bound to a number
+                store.add_chat_link(lk.model_copy(update={"phone": phone_now}))
                 return e
+            if lk.phone and lk.phone == phone_now:
+                return e
+            store.add_chat_link(lk.model_copy(update={"revoked": True}))
     if phone and (wanted := normalize_phone(phone)):
         matches = [e for e in employees if e.phone and normalize_phone(e.phone) == wanted]
         if len(matches) == 1:

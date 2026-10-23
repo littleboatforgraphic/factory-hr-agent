@@ -17,6 +17,7 @@ import hmac
 import logging
 import os
 import sys
+import time
 from collections import OrderedDict
 from collections.abc import Callable
 from functools import lru_cache
@@ -30,6 +31,17 @@ from hr_agent.channels.whatsapp import WhatsAppClient, parse_messages, verify_si
 from hr_agent.cloud_agent.agent import Agent, Tenant, load_tenants
 
 log = logging.getLogger(__name__)
+MAX_BATCH = 50  # messages handled per WhatsApp webhook delivery
+
+
+def _retry(send, attempts: int = 3, delay: float = 1.0) -> None:
+    for i in range(attempts):
+        try:
+            return send()
+        except Exception:
+            if i == attempts - 1:
+                raise
+            time.sleep(delay * (i + 1))
 
 
 class _Seen:
@@ -94,7 +106,7 @@ def create_cloud_app(
                 reply.text = TEXTS["text_only"]
         try:
             with telegram(tenant) as client:
-                client.send(chat_id, reply.text, reply.ask_contact)
+                _retry(lambda: client.send(chat_id, reply.text, reply.ask_contact))
         except Exception as e:  # no traceback: request URLs/headers can carry the bot token
             log.error("Telegram send failed for factory %s (%s)", tenant.factory_id, type(e).__name__)
 
@@ -130,7 +142,7 @@ def create_cloud_app(
                 reply.text = TEXTS["text_only"]
         try:
             with whatsapp(tenant) as client:
-                client.send(msg["from"], reply.text)
+                _retry(lambda: client.send(msg["from"], reply.text))
         except Exception as e:  # no traceback: request URLs/headers can carry the bot token
             log.error("WhatsApp send failed for factory %s (%s)", tenant.factory_id, type(e).__name__)
 
@@ -141,7 +153,10 @@ def create_cloud_app(
         if not verify_signature(whatsapp_app_secret, raw, signature):
             raise HTTPException(403, "Bad signature")
         by_number = {t.whatsapp_phone_number_id: t for t in tenants.values() if t.whatsapp_phone_number_id}
-        for msg in parse_messages(await request.json()):
+        messages = parse_messages(await request.json())
+        if len(messages) > MAX_BATCH:
+            log.warning("WhatsApp delivery with %d messages; handling the first %d", len(messages), MAX_BATCH)
+        for msg in messages[:MAX_BATCH]:
             tenant = by_number.get(msg["phone_number_id"])
             if tenant is None or not msg["from"] or not seen.first_time(("whatsapp", msg["id"])):
                 continue

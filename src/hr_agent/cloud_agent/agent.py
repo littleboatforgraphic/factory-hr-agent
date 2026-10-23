@@ -13,7 +13,6 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlencode
 
 import httpx
 import yaml
@@ -85,13 +84,21 @@ def load_tenants(path: str | Path) -> dict[str, Tenant]:
 class FactoryTools:
     """Read-only tools bound to one tenant and, for employees, one employee id."""
 
-    def __init__(self, http: httpx.Client, employee_id: str | None = None, hr_user: str | None = None):
+    def __init__(self, http: httpx.Client, employee_id: str | None = None, hr_user: str | None = None,
+                 staff_user: str | None = None):
         self.http = http
         self.employee_id = employee_id
         self.hr_user = hr_user
+        self.staff_user = staff_user or hr_user
 
-    def _get(self, path: str) -> Any:
-        r = self.http.get(path)
+    def _scope(self) -> dict:
+        """Tell the factory node whom the agent acts for; it limits access accordingly."""
+        if self.employee_id is not None:
+            return {"for_employee": self.employee_id}
+        return {"on_behalf_of": self.staff_user} if self.staff_user else {}
+
+    def _get(self, path: str, params: dict | None = None) -> Any:
+        r = self.http.get(path, params={**self._scope(), **(params or {})})
         if r.status_code >= 400:
             return {"error": r.status_code, "detail": r.json().get("detail") if r.headers.get("content-type", "").startswith("application/json") else r.text}
         return r.json()
@@ -122,10 +129,10 @@ class FactoryTools:
             return self._get(f"/runs/{period}/flags")
         if name == "get_attendance":
             params = {k: args[k] for k in ("department", "employee_id") if args.get(k)}
-            return self._get(f"/runs/{period}/attendance" + ("?" + urlencode(params) if params else ""))
+            return self._get(f"/runs/{period}/attendance", params)
         if name == "get_payslip":
-            released = "?released_only=true" if self.employee_id is not None else ""
-            return self._get(f"/runs/{period}/payslips/{args['employee_id']}{released}")
+            released = {"released_only": "true"} if self.employee_id is not None else None
+            return self._get(f"/runs/{period}/payslips/{args['employee_id']}", released)
         return {"error": 400, "detail": f"Unknown tool {name}"}
 
 
@@ -153,12 +160,13 @@ class Agent:
         return self._llm_by_tenant[tenant.factory_id]
 
     def ask(self, factory_id: str, message: str, *, language: str = "en", employee_id: str | None = None,
-            hr_user: str | None = None, http: httpx.Client | None = None, max_steps: int = 5) -> str:
+            hr_user: str | None = None, staff_user: str | None = None, http: httpx.Client | None = None, max_steps: int = 5) -> str:
         """employee_id: an employee chatting about their own payslip. hr_user: an HR officer (enables HR tools)."""
         tenant = self.tenants.get(factory_id)
         if tenant is None:
             raise KeyError(f"Unknown factory {factory_id!r}")
-        tools = FactoryTools(http or tenant.client(), employee_id, hr_user if employee_id is None else None)
+        tools = FactoryTools(http or tenant.client(), employee_id, hr_user if employee_id is None else None,
+                             staff_user if employee_id is None else None)
         llm = self.llm_for(tenant)
         metering: dict[str, Any] = {"extra_body": {"metadata": {"tags": [
             f"factory:{factory_id}", "op:employee-qa" if employee_id is not None else "op:hr-qa"]}}}

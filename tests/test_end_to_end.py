@@ -89,7 +89,7 @@ def test_node_api_access_and_agent_routing(factory, store, seeded):
     calls = []
     agent = Agent({factory.id: Tenant(factory.id, "http://node", "X")}, llm=_fake_llm(calls), model="m")
     client.headers.update(h("t-agent"))
-    assert agent.ask(factory.id, "Why is L1's pay this amount?", http=client) == "done"
+    assert agent.ask(factory.id, "Why is L1's pay this amount?", staff_user="acct", http=client) == "done"
     tool_msg = calls[1]["messages"][-1]
     assert tool_msg["role"] == "tool" and '"employee_id": "L1"' in tool_msg["content"]
 
@@ -190,3 +190,15 @@ def test_replacement_leave_by_hr_or_agent_on_hr_instruction(factory, store, seed
     run = service.run_payroll(factory, store, "2026-09", "hr1")
     f1 = next(p for p in run.payslips if p.employee_id == "F1")
     assert next(r.entitled for r in f1.leave if r.leave_type.value == "replacement") == Decimal("1.5")
+
+
+def test_agent_token_must_say_whom_it_acts_for(factory, store, seeded):
+    service.import_attendance(factory, store, seeded, "zkteco_csv", "hr1")
+    service.run_payroll(factory, store, "2026-09", "hr1")
+    node = TestClient(create_app(factory, store, TOKENS), headers={"Authorization": "Bearer t-agent"})
+    assert node.get("/runs/2026-09").status_code == 403
+    assert node.get("/runs/2026-09", params={"on_behalf_of": "nobody"}).status_code == 403
+    assert node.get("/runs/2026-09", params={"on_behalf_of": "gm"}).status_code == 200
+    assert node.get("/runs/2026-09/payslips/L1", params={"for_employee": "F1"}).status_code == 403
+    assert node.get("/runs/2026-09/payslips/F1", params={"for_employee": "F1"}).status_code == 404  # not locked
+    assert node.get("/runs/2026-09/payslips/F1", params={"on_behalf_of": "acct"}).status_code == 200

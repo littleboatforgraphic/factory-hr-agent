@@ -134,6 +134,7 @@ class ChatLink(BaseModel):
     employee_id: str
     channel: Literal["telegram", "whatsapp"]
     chat_id: str
+    revoked: bool = False  # set once the employee's phone no longer matches; the link never revives
     phone: str = ""  # normalised number that was matched; the link lapses if HR changes the employee's phone
     linked_at: datetime | None = None
     linked_by: str = ""

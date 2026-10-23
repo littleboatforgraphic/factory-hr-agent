@@ -114,7 +114,7 @@ class ChatGateway:
                         return Reply(TEXTS["welcome"])
                     hr_user = staff.user if staff.role == "hr" else None
                     return Reply(self.agent.ask(factory_id, text, language=staff.language or sender.language or "en",
-                                                hr_user=hr_user, http=http))
+                                                hr_user=hr_user, staff_user=staff.user, http=http))
                 employee = self._employee(http, sender)
                 if employee is None:
                     return Reply(TEXTS[f"unregistered_{sender.channel}"], ask_contact=sender.channel == "telegram")
