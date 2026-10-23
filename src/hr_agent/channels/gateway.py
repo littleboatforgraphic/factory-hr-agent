@@ -46,6 +46,8 @@ class StaffMember:
     telegram_id: str = ""
     whatsapp: str = ""
     language: str = "en"
+    # Required for WhatsApp: the staff member's employee id; their number must still match master.xlsx.
+    employee_id: str = ""
 
 
 def load_staff(path: str | Path) -> list[StaffMember]:
@@ -100,6 +102,13 @@ class ChatGateway:
         try:
             with self.node_client(tenant) as http:
                 staff = self.staff_member(factory_id, sender)
+                if staff is not None and sender.channel == "whatsapp":
+                    # Phone numbers get reassigned: only honour a staff number that still belongs to that
+                    # current employee in the factory's master file.
+                    current = self._employee(http, sender)
+                    if not staff.employee_id or not current or current.get("employee_id") != staff.employee_id:
+                        log.warning("Staff WhatsApp number for %s/%s no longer matches master", factory_id, staff.user)
+                        staff = None
                 if staff is not None:
                     if text.strip() == "/start":
                         return Reply(TEXTS["welcome"])

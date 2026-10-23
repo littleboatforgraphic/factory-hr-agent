@@ -306,6 +306,7 @@ def compute_payslip(
     payslip = Payslip(
         employee_id=eid,
         employee_name=employee.name,
+        department=employee.department,
         period=period,
         attendance_start=attendance_start,
         attendance_end=attendance_end,

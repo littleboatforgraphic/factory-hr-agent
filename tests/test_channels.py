@@ -25,7 +25,8 @@ SECRET, APP_SECRET = "tg-secret", "meta-secret"
 @pytest.fixture
 def chat(factory, store, monkeypatch):
     wb = load_workbook(store.master)
-    for e in (emp("F1", phone="012-345 6789"), emp("L1", "3000", "local", telegram_id="555", language="ms")):
+    for e in (emp("F1", phone="012-345 6789"), emp("L1", "3000", "local", telegram_id="555", language="ms"),
+              emp("A1", "4000", "local", phone="011-1111 1111"), emp("A2", "4000", "local", phone="011-2222 2222")):
         wb["Employees"].append([e.model_dump().get(c) for c in MASTER_SHEETS["Employees"]])
     wb.save(store.master)
     monkeypatch.setenv("TG_SECRET", SECRET)
@@ -40,7 +41,8 @@ def chat(factory, store, monkeypatch):
     calls = []
     tenant = Tenant(factory.id, "http://node", "X", telegram_secret_env="TG_SECRET", whatsapp_phone_number_id="PN1")
     agent = Agent({factory.id: tenant}, llm=_fake_llm(calls), model="m")
-    staff = [StaffMember(factory.id, "hr1", "hr", telegram_id="900"), StaffMember(factory.id, "acct", "accountant", whatsapp="60111111111")]
+    staff = [StaffMember(factory.id, "hr1", "hr", telegram_id="900"), StaffMember(factory.id, "acct", "accountant", whatsapp="601111111111", employee_id="A1"),
+             StaffMember(factory.id, "old-hr", "hr", whatsapp="601122222222", employee_id="X9")]
     gateway = ChatGateway(agent, staff, node_client=lambda t: TestClient(
         create_app(factory, store, TOKENS), headers={"Authorization": "Bearer t-agent"}))
     app = create_cloud_app(gateway, telegram=lambda t: TelegramClient("T", transport=recorder("telegram")),
@@ -132,12 +134,12 @@ def test_whatsapp_verify_and_signature(chat):
 def test_whatsapp_employee_staff_and_unknown(chat):
     client, sent, calls = chat
     for msg in (wa("m1", "60123456789", "my OT?"), wa("m2", "60199999999", "hi"), wa("m3", "60123456789", kind="image"),
-                wa("m4", "60111111111", "run summary 2026-09"), wa("m5", "60123456789", "x", pnid="OTHER")):
+                wa("m4", "601111111111", "run summary 2026-09"), wa("m5", "60123456789", "x", pnid="OTHER")):
         raw, headers = signed(msg)
         assert client.post("/whatsapp", content=raw, headers=headers).status_code == 200
     assert [(m["to"], m["text"]["body"]) for m in sent["whatsapp"]] == [
         ("60123456789", "done"), ("60199999999", TEXTS["unregistered_whatsapp"]),
-        ("60123456789", TEXTS["text_only"]), ("60111111111", "done")]
+        ("60123456789", TEXTS["text_only"]), ("601111111111", "done")]
     assert sent["whatsapp"][0]["messaging_product"] == "whatsapp"
     accountant_tools = [t["function"]["name"] for t in calls[2]["tools"]]
     assert "get_run_summary" in accountant_tools and "record_replacement_leave" not in accountant_tools
@@ -182,3 +184,22 @@ def test_staff_attendance_tool(factory, store, tmp_path):
     calls.clear()
     agent.ask(factory.id, "my attendance", employee_id="F1", http=node)
     assert "get_attendance" not in [t["function"]["name"] for t in calls[0]["tools"]]
+
+
+def test_reassigned_staff_whatsapp_number_loses_staff_access(chat):
+    client, sent, calls = chat
+    raw, headers = signed(wa("s1", "601122222222", "record leave for F1"))  # number now belongs to employee A2
+    client.post("/whatsapp", content=raw, headers=headers)
+    assert [t["function"]["name"] for t in calls[0]["tools"]] == ["get_payslip"]  # treated as employee A2
+
+
+def test_attendance_keeps_department_at_payroll_time(factory, store):
+    wb = load_workbook(store.master)
+    wb["Employees"].append([emp("F1", department="Line 2").model_dump().get(c) for c in MASTER_SHEETS["Employees"]])
+    wb.save(store.master)
+    service.run_payroll(factory, store, "2026-09", "hr1")
+    wb = load_workbook(store.master)
+    wb["Employees"].cell(2, MASTER_SHEETS["Employees"].index("department") + 1).value = "Line 3"
+    wb.save(store.master)
+    report = service.attendance_report(store.load_run("2026-09"), store.employees(), department="Line 2")
+    assert [e["employee_id"] for e in report["employees"]] == ["F1"]
