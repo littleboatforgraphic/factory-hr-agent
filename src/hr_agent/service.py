@@ -219,7 +219,7 @@ def attendance_report(run: PayrollRun, employees: list[Employee], department: st
     rows = []
     for p in run.payslips:
         e = info.get(p.employee_id)
-        dept = p.department or (e.department if e else "")
+        dept = p.department if p.department is not None else (e.department if e else "")
         if (employee_id and p.employee_id != employee_id) or (department and dept.lower() != department.lower()):
             continue
         days = [d for d in p.days if d.status != "not_employed"]

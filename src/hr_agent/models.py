@@ -210,7 +210,7 @@ class Payslip(BaseModel):
     employee_id: str
     employee_name: str
     period: str
-    department: str = ""  # as at payroll time, so past attendance stays with that department
+    department: str | None = None  # as at payroll time (None: run made before this was recorded), so past attendance stays with that department
     attendance_start: dt.date
     attendance_end: dt.date
     lines: list[Line]
