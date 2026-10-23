@@ -210,6 +210,41 @@ def transition(store: Store, period: str, version: int, target: RunStatus, user:
     return store.set_status(period, version, target, user, note)
 
 
+def attendance_report(run: PayrollRun, employees: list[Employee], department: str = "",
+                      employee_id: str = "") -> dict:
+    """Per-employee attendance figures from a payroll run (read-only, for staff questions)."""
+    info = {e.employee_id: e for e in employees}
+    rows = []
+    for p in run.payslips:
+        e = info.get(p.employee_id)
+        dept = e.department if e else ""
+        if (employee_id and p.employee_id != employee_id) or (department and dept.lower() != department.lower()):
+            continue
+        days = [d for d in p.days if d.status != "not_employed"]
+        leave: Counter = Counter()
+        for d in days:
+            if d.leave_type:
+                leave[d.leave_type.value] += d.leave_days
+        late = [d for d in days if d.late_minutes > 0]
+        rows.append({
+            "employee_id": p.employee_id, "name": p.employee_name, "department": dept,
+            "position": e.position if e else "",
+            "working_days": sum(1 for d in days if d.day_type == "normal"),
+            "present_days": sum(1 for d in days if d.day_type == "normal" and d.status in ("present", "incomplete")),
+            "absent_days": sum(1 for d in days if d.status == "absent"),
+            "late_days": len(late), "late_minutes": sum(d.late_minutes for d in late),
+            "missing_punch_days": sum(1 for d in days if d.status == "incomplete"),
+            "normal_hours": str(sum((d.normal_hours for d in days), ZERO)),
+            "ot_hours": str(p.ot_hours_total),
+            "rest_day_worked": sum(1 for d in days if d.day_type == "rest" and d.worked_hours > 0),
+            "public_holiday_worked": sum(1 for d in days if d.day_type == "public_holiday" and d.worked_hours > 0),
+            "leave_days": {k: str(v) for k, v in leave.items()},
+            "attendance_flags": sorted({f.code for f in run.flags if f.employee_id == p.employee_id}),
+        })
+    return {"period": run.period, "version": run.version, "status": run.status,
+            "departments": sorted({e.department for e in employees if e.department}), "employees": rows}
+
+
 def run_summary(run: PayrollRun) -> dict:
     totals = {k: sum((getattr(p, k) for p in run.payslips), ZERO) for k in ("gross", "total_deductions", "net", "employer_cost", "ot_hours_total")}
     sev = Counter(f.severity for f in run.flags)

@@ -1,6 +1,7 @@
 import hashlib
 import hmac
 import json
+from decimal import Decimal
 
 import httpx
 import pytest
@@ -143,3 +144,33 @@ def test_node_directory_is_agent_only(factory, store):
     r = node.get("/directory/employee", params={"phone": "+60 12-345 6789"}, headers={"Authorization": "Bearer t-agent"})
     assert r.json() == {"employee_id": "F1", "language": "en"}
     assert service.find_employee(store, phone="60199999999") is None
+
+
+def test_staff_attendance_tool(factory, store, tmp_path):
+    wb = load_workbook(store.master)
+    for e in (emp("F1", device_user_id="101", department="Line 2"), emp("F2", device_user_id="102", department="Line 3")):
+        wb["Employees"].append([e.model_dump().get(c) for c in MASTER_SHEETS["Employees"]])
+    wb.save(store.master)
+    csv = tmp_path / "att.csv"
+    rows = ["AC-No.,Name,Time,State", "101,X,01/09/2026 08:20:00,C/In", "101,X,01/09/2026 19:00:00,C/Out",
+            "102,X,01/09/2026 07:55:00,C/In"]
+    csv.write_text("\n".join(rows) + "\n")
+    service.import_attendance(factory, store, csv, "zkteco_csv", "hr1")
+    service.run_payroll(factory, store, "2026-09", "hr1")
+    node = TestClient(create_app(factory, store, TOKENS))
+    assert node.get("/runs/2026-09/attendance", headers={"Authorization": "Bearer t-f1"}).status_code == 403
+    r = node.get("/runs/2026-09/attendance", params={"department": "line 2"}, headers={"Authorization": "Bearer t-gm"}).json()
+    assert r["departments"] == ["Line 2", "Line 3"] and [e["employee_id"] for e in r["employees"]] == ["F1"]
+    f1 = r["employees"][0]
+    assert f1["late_days"] == 1 and f1["late_minutes"] == 20 and Decimal(f1["ot_hours"]) == 2 and f1["absent_days"] > 0
+
+    calls = []
+    agent = Agent({factory.id: Tenant(factory.id, "http://node", "X")},
+                  llm=_fake_llm(calls, "get_attendance", {"period": "2026-09", "department": "Line 3"}), model="m")
+    agent.ask(factory.id, "Who missed punches in Line 3?", http=TestClient(
+        create_app(factory, store, TOKENS), headers={"Authorization": "Bearer t-agent"}))
+    result = json.loads(calls[1]["messages"][-1]["content"])
+    assert [e["employee_id"] for e in result["employees"]] == ["F2"] and result["employees"][0]["missing_punch_days"] == 1
+    calls.clear()
+    agent.ask(factory.id, "my attendance", employee_id="F1", http=node)
+    assert "get_attendance" not in [t["function"]["name"] for t in calls[0]["tools"]]

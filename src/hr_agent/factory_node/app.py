@@ -95,6 +95,11 @@ def create_app(factory: FactoryConfig, store: Store, tokens: dict[str, dict]) ->
     def flags(period: str, version: int | None = None, c: Caller = Depends(require(READERS))):
         return [f.model_dump(mode="json") for f in get_run(period, version).flags]
 
+    @app.get("/runs/{period}/attendance")
+    def attendance(period: str, department: str = "", employee_id: str = "", version: int | None = None,
+                   c: Caller = Depends(require(READERS))):
+        return service.attendance_report(get_run(period, version), store.employees(), department, employee_id)
+
     @app.post("/runs/{period}/{version}/{target}")
     def transition(period: str, version: int, target: str, note: str = "", c: Caller = Depends(require(STAFF))):
         try:

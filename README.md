@@ -92,7 +92,8 @@ factories; each factory has its own Telegram bot and WhatsApp business number (`
   `master.xlsx`; on Telegram an unknown employee can share their own contact once and the node links the account
   (`ChatLinks` sheet) if the number matches. Anyone else gets a polite refusal.
 - Permissions: employees see only their own payslip and only once the run is locked; HR can also record
-  replacement leave; accountant and management can ask about runs and flags. Replies use the employee's language.
+  replacement leave; accountant and management are read-only (run totals, payslip lines and traces, flags, and
+  attendance per employee or department: present/absent/late days, missing punches, OT, rest-day/PH work, leave). Replies use the employee's language.
 - Phone numbers and chat ids are never sent to the LLM; usage is metered per factory with a hashed user id.
 
 ## Rules implemented

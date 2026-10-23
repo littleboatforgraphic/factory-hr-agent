@@ -13,13 +13,14 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlencode
 
 import httpx
 import yaml
 
 SYSTEM_PROMPT = """You are an HR payroll assistant for a Malaysian factory.
 Rules:
-- Never calculate, estimate or change any pay figure. Only quote amounts and calculation traces returned by tools.
+- Never calculate, estimate or change any pay figure. You may rank or compare employees using figures returned by tools. Only quote amounts and calculation traces returned by tools.
 - If a tool does not return the answer, say you don't know and refer the user to HR.
 - Reply in the user's language ({language}). Keep answers short and plain.
 - Do not reveal one employee's data to another employee.
@@ -31,6 +32,12 @@ TOOLS = [
         "parameters": {"type": "object", "properties": {"period": {"type": "string", "description": "YYYY-MM"}}, "required": ["period"]}}},
     {"type": "function", "function": {"name": "get_flags", "description": "Anomaly and compliance flags for a payroll period",
         "parameters": {"type": "object", "properties": {"period": {"type": "string"}}, "required": ["period"]}}},
+    {"type": "function", "function": {"name": "get_attendance",
+        "description": "Attendance per employee for a payroll period: present/absent/late days, late minutes, missing "
+                       "punches, normal and OT hours, rest-day/public-holiday work, leave taken. Filter by department "
+                       "or employee; the response lists all departments.",
+        "parameters": {"type": "object", "properties": {"period": {"type": "string", "description": "YYYY-MM"},
+                       "department": {"type": "string"}, "employee_id": {"type": "string"}}, "required": ["period"]}}},
     {"type": "function", "function": {"name": "get_payslip", "description": "Payslip lines with calculation traces for one employee",
         "parameters": {"type": "object", "properties": {"period": {"type": "string"}, "employee_id": {"type": "string"}}, "required": ["period", "employee_id"]}}},
 ]
@@ -113,6 +120,9 @@ class FactoryTools:
             return self._get(f"/runs/{period}")
         if name == "get_flags":
             return self._get(f"/runs/{period}/flags")
+        if name == "get_attendance":
+            params = {k: args[k] for k in ("department", "employee_id") if args.get(k)}
+            return self._get(f"/runs/{period}/attendance" + ("?" + urlencode(params) if params else ""))
         if name == "get_payslip":
             released = "?released_only=true" if self.employee_id is not None else ""
             return self._get(f"/runs/{period}/payslips/{args['employee_id']}{released}")
