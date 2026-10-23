@@ -88,7 +88,8 @@ factories; each factory has its own Telegram bot and WhatsApp business number (`
 - WhatsApp Cloud API: `GET /whatsapp` (Meta verification, `WHATSAPP_VERIFY_TOKEN`) and `POST /whatsapp`
   (signature checked with `WHATSAPP_APP_SECRET`); replies go out from the factory's number.
 - Who is chatting: staff (HR, accountant, management) are listed in `HR_CHAT_STAFF`
-  (`config/chat_staff.example.yaml`). Employees are matched by the factory node from `telegram_id` / `phone` in
+  (`config/chat_staff.example.yaml`); WhatsApp staff also need `employee_id`, and lose staff access when that
+  employee leaves or their phone in `master.xlsx` changes. Employees are matched by the factory node from `telegram_id` / `phone` in
   `master.xlsx`; on Telegram an unknown employee can share their own contact once and the node links the account
   (`ChatLinks` sheet) if the number matches. Anyone else gets a polite refusal.
 - Permissions: employees see only their own payslip and only once the run is locked; HR can also record
