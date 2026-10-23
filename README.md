@@ -80,6 +80,25 @@ HR records replacement leave per employee after confirming with the employee and
 agent to record it: `Agent.ask(..., hr_user=...)` enables the `record_replacement_leave` tool, and the factory node
 accepts it only on behalf of a user with the `hr` role. Credits add to the replacement-leave entitlement for the year.
 
+## Telegram and WhatsApp
+The cloud agent web app (`uvicorn hr_agent.cloud_agent.app:app_factory --factory`) receives both channels for all
+factories; each factory has its own Telegram bot and WhatsApp business number (`config/tenants.example.yaml`).
+- Telegram: `POST /telegram/<factory_id>`, checked with the bot's secret token. Register it with
+  `python -m hr_agent.cloud_agent.app set-telegram-webhook <factory_id> <public URL>`.
+- WhatsApp Cloud API: `GET /whatsapp` (Meta verification, `WHATSAPP_VERIFY_TOKEN`) and `POST /whatsapp`
+  (signature checked with `WHATSAPP_APP_SECRET`); replies go out from the factory's number.
+- Who is chatting: staff (HR, accountant, management) are listed in `HR_CHAT_STAFF`
+  (`config/chat_staff.example.yaml`); WhatsApp staff also need `employee_id`, and lose staff access when that
+  employee leaves or their phone in `master.xlsx` changes. Employees are matched by the factory node from `telegram_id` / `phone` in
+  `master.xlsx`; on Telegram an unknown employee can share their own contact once and the node links the account
+  (`ChatLinks` sheet) if the number matches. Anyone else gets a polite refusal.
+- Permissions: employees see only their own payslip and only once the run is locked; HR can also record
+  replacement leave; accountant and management are read-only (run totals, payslip lines and traces, flags, and
+  attendance per employee or department: present/absent/late days, missing punches, OT, rest-day/PH work, leave). Replies use the employee's language.
+- The phone number is the employee's identity on WhatsApp (and for Telegram linking): HR must update or clear
+  `phone` in `master.xlsx` as soon as a worker changes number, so a reassigned number cannot see their payslips.
+- Phone numbers and chat ids are never sent to the LLM; usage is metered per factory with a hashed user id.
+
 ## Rules implemented
 - Normal hours from schedule segments (default 08:00-12:00, 13:00-17:00 Mon-Fri; 08:00-13:00 Sat); schedules over
   9 h/day or 45 h/week are rejected.

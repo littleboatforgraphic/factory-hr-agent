@@ -19,7 +19,7 @@ import yaml
 
 SYSTEM_PROMPT = """You are an HR payroll assistant for a Malaysian factory.
 Rules:
-- Never calculate, estimate or change any pay figure. Only quote amounts and calculation traces returned by tools.
+- Never calculate, estimate or change any pay figure. You may rank or compare employees using figures returned by tools. Only quote amounts and calculation traces returned by tools.
 - If a tool does not return the answer, say you don't know and refer the user to HR.
 - Reply in the user's language ({language}). Keep answers short and plain.
 - Do not reveal one employee's data to another employee.
@@ -31,6 +31,12 @@ TOOLS = [
         "parameters": {"type": "object", "properties": {"period": {"type": "string", "description": "YYYY-MM"}}, "required": ["period"]}}},
     {"type": "function", "function": {"name": "get_flags", "description": "Anomaly and compliance flags for a payroll period",
         "parameters": {"type": "object", "properties": {"period": {"type": "string"}}, "required": ["period"]}}},
+    {"type": "function", "function": {"name": "get_attendance",
+        "description": "Attendance per employee for a payroll period: present/absent/late days, late minutes, missing "
+                       "punches, normal and OT hours, rest-day/public-holiday work, leave taken. Filter by department "
+                       "or employee; the response lists all departments.",
+        "parameters": {"type": "object", "properties": {"period": {"type": "string", "description": "YYYY-MM"},
+                       "department": {"type": "string"}, "employee_id": {"type": "string"}}, "required": ["period"]}}},
     {"type": "function", "function": {"name": "get_payslip", "description": "Payslip lines with calculation traces for one employee",
         "parameters": {"type": "object", "properties": {"period": {"type": "string"}, "employee_id": {"type": "string"}}, "required": ["period", "employee_id"]}}},
 ]
@@ -56,6 +62,11 @@ class Tenant:
     node_url: str
     token_env: str
     llm_key_env: str | None = None  # env var holding this client's llm-gateway key; falls back to LLM_API_KEY
+    # Chat channels (one Telegram bot and one WhatsApp number per factory); secrets come from env vars.
+    telegram_token_env: str | None = None
+    telegram_secret_env: str | None = None
+    whatsapp_phone_number_id: str | None = None
+    whatsapp_token_env: str | None = None
 
     def llm_api_key(self) -> str | None:
         return (os.environ.get(self.llm_key_env) if self.llm_key_env else None) or os.environ.get("LLM_API_KEY")
@@ -73,13 +84,21 @@ def load_tenants(path: str | Path) -> dict[str, Tenant]:
 class FactoryTools:
     """Read-only tools bound to one tenant and, for employees, one employee id."""
 
-    def __init__(self, http: httpx.Client, employee_id: str | None = None, hr_user: str | None = None):
+    def __init__(self, http: httpx.Client, employee_id: str | None = None, hr_user: str | None = None,
+                 staff_user: str | None = None):
         self.http = http
         self.employee_id = employee_id
         self.hr_user = hr_user
+        self.staff_user = staff_user or hr_user
 
-    def _get(self, path: str) -> Any:
-        r = self.http.get(path)
+    def _scope(self) -> dict:
+        """Tell the factory node whom the agent acts for; it limits access accordingly."""
+        if self.employee_id is not None:
+            return {"for_employee": self.employee_id}
+        return {"on_behalf_of": self.staff_user} if self.staff_user else {}
+
+    def _get(self, path: str, params: dict | None = None) -> Any:
+        r = self.http.get(path, params={**self._scope(), **(params or {})})
         if r.status_code >= 400:
             return {"error": r.status_code, "detail": r.json().get("detail") if r.headers.get("content-type", "").startswith("application/json") else r.text}
         return r.json()
@@ -108,8 +127,12 @@ class FactoryTools:
             return self._get(f"/runs/{period}")
         if name == "get_flags":
             return self._get(f"/runs/{period}/flags")
+        if name == "get_attendance":
+            params = {k: args[k] for k in ("department", "employee_id") if args.get(k)}
+            return self._get(f"/runs/{period}/attendance", params)
         if name == "get_payslip":
-            return self._get(f"/runs/{period}/payslips/{args['employee_id']}")
+            released = {"released_only": "true"} if self.employee_id is not None else None
+            return self._get(f"/runs/{period}/payslips/{args['employee_id']}", released)
         return {"error": 400, "detail": f"Unknown tool {name}"}
 
 
@@ -137,12 +160,13 @@ class Agent:
         return self._llm_by_tenant[tenant.factory_id]
 
     def ask(self, factory_id: str, message: str, *, language: str = "en", employee_id: str | None = None,
-            hr_user: str | None = None, http: httpx.Client | None = None, max_steps: int = 5) -> str:
+            hr_user: str | None = None, staff_user: str | None = None, http: httpx.Client | None = None, max_steps: int = 5) -> str:
         """employee_id: an employee chatting about their own payslip. hr_user: an HR officer (enables HR tools)."""
         tenant = self.tenants.get(factory_id)
         if tenant is None:
             raise KeyError(f"Unknown factory {factory_id!r}")
-        tools = FactoryTools(http or tenant.client(), employee_id, hr_user if employee_id is None else None)
+        tools = FactoryTools(http or tenant.client(), employee_id, hr_user if employee_id is None else None,
+                             staff_user if employee_id is None else None)
         llm = self.llm_for(tenant)
         metering: dict[str, Any] = {"extra_body": {"metadata": {"tags": [
             f"factory:{factory_id}", "op:employee-qa" if employee_id is not None else "op:hr-qa"]}}}

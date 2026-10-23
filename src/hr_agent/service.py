@@ -12,10 +12,11 @@ from hr_agent.config import FactoryConfig
 from hr_agent.devices import load_profile, parse_export
 from hr_agent.holidays import load_holidays
 from hr_agent.leave import summarise_leave
-from hr_agent.models import Flag, LeaveCredit, PayrollRun, Payslip, Punch, RunStatus
+from hr_agent.models import ChatLink, Employee, Flag, LeaveCredit, PayrollRun, Payslip, Punch, RunStatus
 from hr_agent.money import ZERO
 from hr_agent.payroll import YearToDate, compute_payslip
 from hr_agent.periods import attendance_bounds, month_bounds, parse_period
+from hr_agent.phone import normalize_phone
 from hr_agent.statutory.my import MalaysiaStatutory
 from hr_agent.storage.base import Store
 from hr_agent.storage.excel import punch_window
@@ -150,6 +151,51 @@ def run_payroll(factory: FactoryConfig, store: Store, period: str, user: str) ->
     return store.save_run(run)
 
 
+def _current_employees(store: Store) -> list[Employee]:
+    today = date.today()
+    return [e for e in store.employees() if e.exit_date is None or e.exit_date >= today]
+
+
+def find_employee(store: Store, *, telegram_id: str = "", phone: str = "") -> Employee | None:
+    """Current employee by Telegram user id (master or linked) or by phone number."""
+    employees = _current_employees(store)
+    if telegram_id:
+        for e in employees:
+            if e.telegram_id == telegram_id:
+                return e
+        current = {e.employee_id: e for e in employees}
+        latest: dict[str, ChatLink] = {}
+        for lk in store.chat_links():
+            if lk.channel == "telegram" and lk.chat_id == telegram_id:
+                latest[lk.employee_id] = lk
+        for eid, lk in latest.items():
+            e = current.get(eid)
+            if e is None or lk.revoked:
+                continue
+            phone_now = normalize_phone(e.phone)
+            if not lk.phone and phone_now:  # link saved before links were bound to a number
+                store.add_chat_link(lk.model_copy(update={"phone": phone_now}))
+                return e
+            if lk.phone and lk.phone == phone_now:
+                return e
+            store.add_chat_link(lk.model_copy(update={"revoked": True}))
+    if phone and (wanted := normalize_phone(phone)):
+        matches = [e for e in employees if e.phone and normalize_phone(e.phone) == wanted]
+        if len(matches) == 1:
+            return matches[0]
+    return None
+
+
+def link_chat(store: Store, channel: str, chat_id: str, phone: str, user: str) -> Employee | None:
+    """Link a chat account to the employee whose phone number in the master file matches."""
+    employee = find_employee(store, phone=phone)
+    if employee is None:
+        return None
+    store.add_chat_link(ChatLink(employee_id=employee.employee_id, channel=channel, chat_id=chat_id,  # type: ignore[arg-type]
+                                 phone=normalize_phone(employee.phone), linked_at=datetime.now().replace(microsecond=0), linked_by=user))
+    return employee
+
+
 def record_leave_credit(store: Store, credit: LeaveCredit, user: str, on_behalf_of: str = "") -> LeaveCredit:
     """Grant leave days (e.g. replacement leave) once the employee and their manager have confirmed."""
     if credit.employee_id not in {e.employee_id for e in store.employees()}:
@@ -177,6 +223,41 @@ def transition(store: Store, period: str, version: int, target: RunStatus, user:
     if target == "approved" and run.blocking_flags:
         raise ValueError(f"{len(run.blocking_flags)} blocking flag(s) must be resolved before approval")
     return store.set_status(period, version, target, user, note)
+
+
+def attendance_report(run: PayrollRun, employees: list[Employee], department: str = "",
+                      employee_id: str = "") -> dict:
+    """Per-employee attendance figures from a payroll run (read-only, for staff questions)."""
+    info = {e.employee_id: e for e in employees}
+    rows = []
+    for p in run.payslips:
+        e = info.get(p.employee_id)
+        dept = p.department if p.department is not None else (e.department if e else "")
+        if (employee_id and p.employee_id != employee_id) or (department and dept.lower() != department.lower()):
+            continue
+        days = [d for d in p.days if d.status != "not_employed"]
+        leave: Counter = Counter()
+        for d in days:
+            if d.leave_type:
+                leave[d.leave_type.value] += d.leave_days
+        late = [d for d in days if d.late_minutes > 0]
+        rows.append({
+            "employee_id": p.employee_id, "name": p.employee_name, "department": dept,
+            "position": e.position if e else "",
+            "working_days": sum(1 for d in days if d.day_type == "normal"),
+            "present_days": sum(1 for d in days if d.day_type == "normal" and d.status in ("present", "incomplete")),
+            "absent_days": sum(1 for d in days if d.status == "absent"),
+            "late_days": len(late), "late_minutes": sum(d.late_minutes for d in late),
+            "missing_punch_days": sum(1 for d in days if d.status == "incomplete"),
+            "normal_hours": str(sum((d.normal_hours for d in days), ZERO)),
+            "ot_hours": str(p.ot_hours_total),
+            "rest_day_worked": sum(1 for d in days if d.day_type == "rest" and d.worked_hours > 0),
+            "public_holiday_worked": sum(1 for d in days if d.day_type == "public_holiday" and d.worked_hours > 0),
+            "leave_days": {k: str(v) for k, v in leave.items()},
+            "attendance_flags": sorted({f.code for f in run.flags if f.employee_id == p.employee_id}),
+        })
+    return {"period": run.period, "version": run.version, "status": run.status,
+            "departments": sorted({e.department for e in employees if e.department}), "employees": rows}
 
 
 def run_summary(run: PayrollRun) -> dict:

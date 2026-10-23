@@ -128,6 +128,18 @@ class LeaveSummaryRow(BaseModel):
     balance: Decimal | None = None
 
 
+class ChatLink(BaseModel):
+    """A chat account (e.g. Telegram user id) linked to an employee after their phone number matched."""
+
+    employee_id: str
+    channel: Literal["telegram", "whatsapp"]
+    chat_id: str
+    revoked: bool = False  # set once the employee's phone no longer matches; the link never revives
+    phone: str = ""  # normalised number that was matched; the link lapses if HR changes the employee's phone
+    linked_at: datetime | None = None
+    linked_by: str = ""
+
+
 class Punch(BaseModel):
     employee_id: str
     timestamp: datetime
@@ -199,6 +211,7 @@ class Payslip(BaseModel):
     employee_id: str
     employee_name: str
     period: str
+    department: str | None = None  # as at payroll time (None: run made before this was recorded), so past attendance stays with that department
     attendance_start: dt.date
     attendance_end: dt.date
     lines: list[Line]
