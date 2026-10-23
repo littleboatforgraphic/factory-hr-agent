@@ -62,3 +62,15 @@ def test_pay_items_sheet_reads_back(store):
     a, b = store.pay_items()
     assert (a.employee_id, a.item, a.period, a.approved_by) == ("101", "INCENTIVE", "2026-09", "GM")
     assert b.period is None and b.applies_to("2026-10", date(2026, 10, 1), date(2026, 10, 31))
+
+
+def test_first_row_on_blank_sheet_gets_a_header(store):
+    from openpyxl import load_workbook
+
+    from hr_agent.models import LeaveCredit
+    wb = load_workbook(store.master)
+    del wb["LeaveCredits"]
+    wb.create_sheet("LeaveCredits")
+    wb.save(store.master)
+    store.add_leave_credit(LeaveCredit(employee_id="F1", year=2026, days=1, employee_confirmed=True, manager_confirmed_by="M"))
+    assert [c.employee_id for c in store.leave_credits(2026)] == ["F1"]

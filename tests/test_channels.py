@@ -88,6 +88,14 @@ def test_telegram_employee_links_by_phone_then_asks_about_own_payslip(chat, stor
     tg(client, 5, 777, "duplicate delivery")
     assert len(sent["telegram"]) == 5  # retried update answered once
 
+    wb = load_workbook(store.master)  # HR changes F1's phone: the old Telegram link no longer counts
+    ws = wb["Employees"]
+    col = MASTER_SHEETS["Employees"].index("phone") + 1
+    ws.cell(2, col).value = "019-888 7777"
+    wb.save(store.master)
+    tg(client, 6, 777, "my payslip?")
+    assert sent["telegram"][-1]["text"] == TEXTS["unregistered_telegram"]
+
 
 def test_telegram_staff_roles(chat):
     client, sent, calls = chat

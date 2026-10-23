@@ -169,6 +169,7 @@ def test_replacement_leave_by_hr_or_agent_on_hr_instruction(factory, store, seed
     assert client.post("/leave/replacement", json=body, params={"on_behalf_of": "acct"}, headers=h("t-agent")).status_code == 403
     r = client.post("/leave/replacement", json=body, headers=h("t-hr"))
     assert r.status_code == 200 and r.json()["recorded_by"] == "hr1"
+    assert client.post("/leave/replacement", json=body, headers=h("t-hr")).status_code == 400  # same day twice
 
     args = {"employee_id": "F1", "days": 0.5, "worked_on": "2026-09-20", "employee_confirmed": True,
             "manager_confirmed_by": "Mgr Tan"}

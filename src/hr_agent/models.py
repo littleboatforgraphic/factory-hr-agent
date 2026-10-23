@@ -134,6 +134,7 @@ class ChatLink(BaseModel):
     employee_id: str
     channel: Literal["telegram", "whatsapp"]
     chat_id: str
+    phone: str = ""  # normalised number that was matched; the link lapses if HR changes the employee's phone
     linked_at: datetime | None = None
     linked_by: str = ""
 

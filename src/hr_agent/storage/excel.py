@@ -160,17 +160,15 @@ class ExcelStore(Store):
         header = MASTER_SHEETS[sheet]
         with self._lock:
             wb = load_workbook(self.master)
-            if sheet in wb.sheetnames:
-                ws = wb[sheet]
-            else:
-                ws = wb.create_sheet(sheet)
+            ws = wb[sheet] if sheet in wb.sheetnames else wb.create_sheet(sheet)
+            if ws.max_row == 1 and all(c.value is None for c in ws[1]):
                 ws.append(header)
             row = record.model_dump()
             ws.append([_cell(row[h].value if hasattr(row[h], "value") else row[h]) for h in header])
             wb.save(self.master)
 
     def chat_links(self) -> list[ChatLink]:
-        return [ChatLink.model_validate(_as_text_ids(r, "employee_id", "chat_id")) for r in _read_sheet(self.master, "ChatLinks")]
+        return [ChatLink.model_validate(_as_text_ids(r, "employee_id", "chat_id", "phone")) for r in _read_sheet(self.master, "ChatLinks")]
 
     def add_chat_link(self, link: ChatLink) -> ChatLink:
         self._append_master("ChatLinks", link)

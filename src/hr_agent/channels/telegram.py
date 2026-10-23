@@ -15,6 +15,15 @@ class TelegramClient:
     def __init__(self, token: str, transport: httpx.BaseTransport | None = None):
         self.http = httpx.Client(base_url=f"{API}/bot{token}", timeout=20, transport=transport)
 
+    def close(self) -> None:
+        self.http.close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc) -> None:
+        self.close()
+
     def send(self, chat_id: str | int, text: str, ask_contact: bool = False) -> None:
         markup = ({"keyboard": [[{"text": CONTACT_BUTTON, "request_contact": True}]], "one_time_keyboard": True,
                    "resize_keyboard": True} if ask_contact else {"remove_keyboard": True})

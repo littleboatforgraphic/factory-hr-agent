@@ -160,9 +160,11 @@ def find_employee(store: Store, *, telegram_id: str = "", phone: str = "") -> Em
     """Current employee by Telegram user id (master or linked) or by phone number."""
     employees = _current_employees(store)
     if telegram_id:
-        linked = {lk.chat_id: lk.employee_id for lk in store.chat_links() if lk.channel == "telegram"}
+        links = [lk for lk in store.chat_links() if lk.channel == "telegram" and lk.chat_id == telegram_id]
         for e in employees:
-            if e.telegram_id == telegram_id or linked.get(telegram_id) == e.employee_id:
+            if e.telegram_id == telegram_id:
+                return e
+            if any(lk.employee_id == e.employee_id and lk.phone and lk.phone == normalize_phone(e.phone) for lk in links):
                 return e
     if phone and (wanted := normalize_phone(phone)):
         matches = [e for e in employees if e.phone and normalize_phone(e.phone) == wanted]
@@ -177,7 +179,7 @@ def link_chat(store: Store, channel: str, chat_id: str, phone: str, user: str) -
     if employee is None:
         return None
     store.add_chat_link(ChatLink(employee_id=employee.employee_id, channel=channel, chat_id=chat_id,  # type: ignore[arg-type]
-                                 linked_at=datetime.now().replace(microsecond=0), linked_by=user))
+                                 phone=normalize_phone(employee.phone), linked_at=datetime.now().replace(microsecond=0), linked_by=user))
     return employee
 
 
@@ -189,6 +191,9 @@ def record_leave_credit(store: Store, credit: LeaveCredit, user: str, on_behalf_
         raise ValueError("Confirm with the employee and name the approving manager before recording leave")
     if credit.days % Decimal("0.5"):
         raise ValueError("Leave is granted in half or full days")
+    if credit.worked_on and any(c.employee_id == credit.employee_id and c.leave_type == credit.leave_type
+                                and c.worked_on == credit.worked_on for c in store.leave_credits(credit.year)):
+        raise ValueError(f"{credit.leave_type.value} leave for {credit.worked_on} is already recorded for {credit.employee_id}")
     credit = credit.model_copy(update={"recorded_by": user, "on_behalf_of": on_behalf_of,
                                        "recorded_at": datetime.now().replace(microsecond=0)})
     return store.add_leave_credit(credit)

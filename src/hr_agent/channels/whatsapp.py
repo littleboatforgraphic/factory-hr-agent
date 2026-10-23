@@ -41,6 +41,15 @@ class WhatsAppClient:
         self.http = httpx.Client(base_url=GRAPH, headers={"Authorization": f"Bearer {token}"}, timeout=20,
                                  transport=transport)
 
+    def close(self) -> None:
+        self.http.close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc) -> None:
+        self.close()
+
     def send(self, to: str, text: str) -> None:
         r = self.http.post(f"/{self.version}/{self.phone_number_id}/messages", json={
             "messaging_product": "whatsapp", "to": to, "type": "text", "text": {"body": text[:MAX_TEXT]}})

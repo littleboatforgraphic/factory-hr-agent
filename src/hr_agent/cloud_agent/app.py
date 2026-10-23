@@ -93,7 +93,8 @@ def create_cloud_app(
             if not reply.ask_contact:
                 reply.text = TEXTS["text_only"]
         try:
-            telegram(tenant).send(chat_id, reply.text, reply.ask_contact)
+            with telegram(tenant) as client:
+                client.send(chat_id, reply.text, reply.ask_contact)
         except Exception:
             log.exception("Telegram send failed for factory %s", tenant.factory_id)
 
@@ -128,7 +129,8 @@ def create_cloud_app(
             if reply.text == TEXTS["welcome"]:
                 reply.text = TEXTS["text_only"]
         try:
-            whatsapp(tenant).send(msg["from"], reply.text)
+            with whatsapp(tenant) as client:
+                client.send(msg["from"], reply.text)
         except Exception:
             log.exception("WhatsApp send failed for factory %s", tenant.factory_id)
 
@@ -168,7 +170,8 @@ def main(argv: list[str]) -> int:
         return 2
     factory_id, base_url = argv[1], argv[2].rstrip("/")
     tenant = load_tenants(os.environ["HR_TENANTS"])[factory_id]
-    print(default_telegram(tenant).set_webhook(f"{base_url}/telegram/{factory_id}", _env(tenant.telegram_secret_env)))
+    with default_telegram(tenant) as client:
+        print(client.set_webhook(f"{base_url}/telegram/{factory_id}", _env(tenant.telegram_secret_env)))
     return 0
 
 
