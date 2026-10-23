@@ -41,7 +41,8 @@ class Store(ABC):
     def leave_credits(self, year: int) -> list[LeaveCredit]: ...
 
     @abstractmethod
-    def add_leave_credit(self, credit: LeaveCredit) -> LeaveCredit: ...
+    def add_leave_credit(self, credit: LeaveCredit) -> LeaveCredit:
+        """Append a credit; raises ValueError if the same leave for the same day worked already exists."""
 
     @abstractmethod
     def chat_links(self) -> list[ChatLink]: ...

@@ -182,7 +182,12 @@ class ExcelStore(Store):
         return link
 
     def add_leave_credit(self, credit: LeaveCredit) -> LeaveCredit:
-        self._append_master("LeaveCredits", credit)
+        with self._lock:  # duplicate check and append under one lock (FileLock is re-entrant)
+            if credit.worked_on and any(c.employee_id == credit.employee_id and c.leave_type == credit.leave_type
+                                        and c.worked_on == credit.worked_on for c in self.leave_credits(credit.year)):
+                raise ValueError(f"{credit.leave_type.value} leave for {credit.worked_on} is already recorded "
+                                 f"for {credit.employee_id}")
+            self._append_master("LeaveCredits", credit)
         who = credit.recorded_by + (f" for {credit.on_behalf_of}" if credit.on_behalf_of else "")
         self.audit("leave_credit", who, f"{credit.employee_id} +{credit.days} {credit.leave_type.value} {credit.year}"
                    f" (worked {credit.worked_on}; manager {credit.manager_confirmed_by}; {credit.reason})")

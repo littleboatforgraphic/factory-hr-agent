@@ -95,8 +95,8 @@ def create_cloud_app(
         try:
             with telegram(tenant) as client:
                 client.send(chat_id, reply.text, reply.ask_contact)
-        except Exception:
-            log.exception("Telegram send failed for factory %s", tenant.factory_id)
+        except Exception as e:  # no traceback: request URLs/headers can carry the bot token
+            log.error("Telegram send failed for factory %s (%s)", tenant.factory_id, type(e).__name__)
 
     @app.post("/telegram/{factory_id}")
     async def telegram_webhook(factory_id: str, request: Request, background: BackgroundTasks,
@@ -131,8 +131,8 @@ def create_cloud_app(
         try:
             with whatsapp(tenant) as client:
                 client.send(msg["from"], reply.text)
-        except Exception:
-            log.exception("WhatsApp send failed for factory %s", tenant.factory_id)
+        except Exception as e:  # no traceback: request URLs/headers can carry the bot token
+            log.error("WhatsApp send failed for factory %s (%s)", tenant.factory_id, type(e).__name__)
 
     @app.post("/whatsapp")
     async def whatsapp_webhook(request: Request, background: BackgroundTasks,

@@ -191,9 +191,6 @@ def record_leave_credit(store: Store, credit: LeaveCredit, user: str, on_behalf_
         raise ValueError("Confirm with the employee and name the approving manager before recording leave")
     if credit.days % Decimal("0.5"):
         raise ValueError("Leave is granted in half or full days")
-    if credit.worked_on and any(c.employee_id == credit.employee_id and c.leave_type == credit.leave_type
-                                and c.worked_on == credit.worked_on for c in store.leave_credits(credit.year)):
-        raise ValueError(f"{credit.leave_type.value} leave for {credit.worked_on} is already recorded for {credit.employee_id}")
     credit = credit.model_copy(update={"recorded_by": user, "on_behalf_of": on_behalf_of,
                                        "recorded_at": datetime.now().replace(microsecond=0)})
     return store.add_leave_credit(credit)
