@@ -163,8 +163,14 @@ class ExcelStore(Store):
             ws = wb[sheet] if sheet in wb.sheetnames else wb.create_sheet(sheet)
             if ws.max_row == 1 and all(c.value is None for c in ws[1]):
                 ws.append(header)
+            # Follow the sheet's own column order (HR may reorder columns); add any missing columns at the end.
+            existing = [str(c.value).strip() if c.value is not None else "" for c in ws[1]]
+            for h in header:
+                if h not in existing:
+                    existing.append(h)
+                    ws.cell(1, len(existing)).value = h
             row = record.model_dump()
-            ws.append([_cell(row[h].value if hasattr(row[h], "value") else row[h]) for h in header])
+            ws.append([_cell(row[h].value if hasattr(row[h], "value") else row[h]) if h in row else None for h in existing])
             wb.save(self.master)
 
     def chat_links(self) -> list[ChatLink]:

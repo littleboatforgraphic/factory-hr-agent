@@ -74,3 +74,16 @@ def test_first_row_on_blank_sheet_gets_a_header(store):
     wb.save(store.master)
     store.add_leave_credit(LeaveCredit(employee_id="F1", year=2026, days=1, employee_confirmed=True, manager_confirmed_by="M"))
     assert [c.employee_id for c in store.leave_credits(2026)] == ["F1"]
+
+
+def test_append_follows_existing_column_order(store):
+    from openpyxl import load_workbook
+
+    from hr_agent.models import ChatLink
+    wb = load_workbook(store.master)
+    del wb["ChatLinks"]
+    wb.create_sheet("ChatLinks").append(["chat_id", "channel", "employee_id"])  # older / reordered header
+    wb.save(store.master)
+    store.add_chat_link(ChatLink(employee_id="F1", channel="telegram", chat_id="777", phone="60123456789"))
+    (link,) = store.chat_links()
+    assert (link.employee_id, link.chat_id, link.phone) == ("F1", "777", "60123456789")
