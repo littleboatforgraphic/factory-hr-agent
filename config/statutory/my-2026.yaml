@@ -12,6 +12,7 @@ epf:
     employer_rate_high: 0.12
     employer_rate_threshold: 5000
   local_60_plus:                 # Malaysian citizens aged 60-75 (Stage 2)
+    max_age: 75                  # no EPF contribution above this age
     employee_rate: 0.0
     employer_rate_low: 0.04
     employer_rate_high: 0.04
