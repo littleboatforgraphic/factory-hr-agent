@@ -84,6 +84,9 @@ class MalaysiaStatutory:
         if wage <= 0:
             return Contribution(ZERO, ZERO, "No EPF wages")
         key = self.epf_rate_key(category, age)
+        max_age = self.cfg["epf"][key].get("max_age")
+        if max_age is not None and age is not None and age > max_age:
+            return Contribution(ZERO, ZERO, f"EPF: not payable above age {max_age}")
         official = self.tables.get(("epf", key))
         if official and (hit := official.lookup(wage)):
             return Contribution(hit[0], hit[1], f"EPF official table ({key}) for wage RM{wage}")

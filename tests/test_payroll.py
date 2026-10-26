@@ -112,6 +112,9 @@ def test_epf_citizen_60_plus_employer_only(factory):
     assert (c.employee, c.employer) == (0, 120)
     f = s.epf(Decimal("1700"), "foreign", age=61)
     assert (f.employee, f.employer) == (34, 34)
+    over = s.epf(Decimal("3000"), "local", age=76)
+    assert (over.employee, over.employer) == (0, 0) and "above age 75" in over.trace
+    assert s.epf(Decimal("3000"), "local", age=75).employer == 120
     e = emp("L60", "3000", "local").model_copy(update={"date_of_birth": date(1960, 1, 1)})
     p, _ = payslip(factory, e)
     assert not [ln for ln in p.lines if ln.code == "EPF_EE" and ln.amount]
